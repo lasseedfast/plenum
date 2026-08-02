@@ -62,6 +62,11 @@ CREATE TABLE IF NOT EXISTS talks (
     period          INTEGER,   -- parliamentary session year (start year)
 
     -- Document references
+    -- `dok_id` is the id of the protocol document this speech appeared in. It is
+    -- written by the ingest step and is NOT the same as `id` above, despite `id`
+    -- historically being described as "the dok_id" — that comment refers to the
+    -- source field named "id", which happens to look like a document id.
+    dok_id          TEXT,
     rel_dok_id      TEXT,
     dok_nummer      TEXT,
     hangar_id       TEXT,
@@ -82,6 +87,16 @@ CREATE TABLE IF NOT EXISTS talks (
     audiofileurl    TEXT,
     startpos        INTEGER,
 
+    -- LLM-derived. `arguments` holds extracted argument sentences; the two
+    -- booleans are pipeline bookkeeping so a re-run can skip finished rows.
+    arguments             TEXT[],
+    arguments_corrected   BOOLEAN DEFAULT FALSE,
+    tagging_failed        BOOLEAN DEFAULT FALSE,
+
+    -- Embedding of `summary`, for debate-level semantic search. Distinct from
+    -- `chunks.embedding`, which covers the full text passage by passage.
+    summary_embedding vector(384),
+
     -- Full-text search vector (auto-maintained by trigger)
     search_vector   TSVECTOR
 );
@@ -96,6 +111,12 @@ CREATE INDEX IF NOT EXISTS talks_datum_idx      ON talks (datum);
 CREATE INDEX IF NOT EXISTS talks_year_idx       ON talks (year);
 CREATE INDEX IF NOT EXISTS talks_intressent_idx ON talks (intressent_id);
 CREATE INDEX IF NOT EXISTS talks_talare_idx     ON talks USING GIN (to_tsvector('simple', coalesce(talare, '')));
+CREATE INDEX IF NOT EXISTS talks_dok_id_idx      ON talks (dok_id);
+
+-- Semantic search over per-speech summaries (separate from chunks.embedding,
+-- which indexes the full text passage by passage).
+CREATE INDEX IF NOT EXISTS talks_summary_embedding_idx ON talks
+    USING hnsw (summary_embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 -- Trigger to keep search_vector up to date on insert/update
 CREATE OR REPLACE FUNCTION talks_search_vector_update() RETURNS TRIGGER AS $$
@@ -141,10 +162,14 @@ CREATE TABLE IF NOT EXISTS debates (
     summary         TEXT,
     num_talks       INTEGER,
     talk_summaries  TEXT[],   -- array of individual talk summary strings
-    talk_ids        TEXT[]    -- array of talk ids (without "talks/" prefix)
+    talk_ids        TEXT[],   -- array of talk ids (without "talks/" prefix)
+
+    summary_embedding vector(384)
 );
 
 CREATE INDEX IF NOT EXISTS debates_datum_idx ON debates (datum);
+CREATE INDEX IF NOT EXISTS debates_summary_embedding_idx ON debates
+    USING hnsw (summary_embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 -- ─────────────────────────────────────────
 -- motions  (motioner from riksdagens öppna data)
@@ -341,8 +366,19 @@ CREATE TABLE IF NOT EXISTS chat_snapshots (
     session_type    TEXT        NOT NULL CHECK (session_type IN ('general', 'mp')),
     intressent_id   TEXT,       -- for MP chats: used to show name/party in the snapshot view
     turns           JSONB       NOT NULL DEFAULT '[]',
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- Full tool-call history, so a forked snapshot resumes with the model's
+    -- context rather than only the rendered turns. Note that stat cards replay
+    -- the SQL stored in here, which is why retired column names need a
+    -- compatibility shim rather than a clean break.
+    llm_messages    JSONB,
+    focus_ids       TEXT[]      DEFAULT '{}',
+    initial_talk_id TEXT,
+    last_activity   TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS chat_snapshots_last_activity_idx ON chat_snapshots (last_activity);
 
 -- ─────────────────────────────────────────
 -- research_boards / research_threads  (deep research)
@@ -447,3 +483,103 @@ CREATE TABLE IF NOT EXISTS job_events (
     ts     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (job_id, seq)
 );
+
+-- ─────────────────────────────────────────
+-- observability
+-- ─────────────────────────────────────────
+
+-- Deduplicated error store. Repeated failures bump `count` and `last_seen_at`
+-- rather than inserting a new row, so a crash loop stays one line instead of
+-- thousands. `fingerprint` is the dedup key (type + normalised traceback).
+CREATE TABLE IF NOT EXISTS error_log (
+    id            BIGSERIAL   PRIMARY KEY,
+    fingerprint   TEXT        NOT NULL UNIQUE,
+    error_type    TEXT        NOT NULL,
+    first_seen_at TIMESTAMPTZ DEFAULT NOW(),
+    last_seen_at  TIMESTAMPTZ DEFAULT NOW(),
+    count         INTEGER     NOT NULL DEFAULT 1,
+    model         TEXT,
+    traceback     TEXT,
+    detail        JSONB
+);
+
+CREATE INDEX IF NOT EXISTS error_log_last_seen_idx  ON error_log (last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS error_log_error_type_idx ON error_log (error_type);
+
+-- Behavioural events (tool chosen, model used, latency). Append-only.
+CREATE TABLE IF NOT EXISTS llm_events (
+    id         BIGSERIAL   PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    event_type TEXT        NOT NULL,
+    detail     JSONB
+);
+
+CREATE INDEX IF NOT EXISTS llm_events_created_idx ON llm_events (created_at DESC);
+CREATE INDEX IF NOT EXISTS llm_events_type_idx    ON llm_events (event_type);
+-- Expression index: model lives inside the JSON payload but is grouped on constantly.
+CREATE INDEX IF NOT EXISTS llm_events_model_idx   ON llm_events ((detail ->> 'model'));
+
+-- ─────────────────────────────────────────
+-- evaluation harness
+--
+-- Populated by scripts/eval_harness.py. A "run" asks a fixed question set; each
+-- answer is split into paragraphs and judged for whether its citations support it.
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS eval_runs (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    started_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at   TIMESTAMPTZ,
+    label         TEXT,
+    config        JSONB,
+    num_questions INTEGER     NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS eval_questions (
+    id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id         UUID        REFERENCES eval_runs(id) ON DELETE CASCADE,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    question       TEXT        NOT NULL,
+    question_type  TEXT,
+    answer         TEXT,
+    tool_trace     JSONB,
+    sources        JSONB,
+    num_iterations INTEGER,
+    duration_ms    INTEGER,
+    error          TEXT,
+    complexity     INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_eval_questions_run ON eval_questions (run_id);
+
+CREATE TABLE IF NOT EXISTS eval_judgments (
+    id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    question_id       UUID        REFERENCES eval_questions(id) ON DELETE CASCADE,
+    paragraph_idx     INTEGER,
+    paragraph_text    TEXT,
+    cited_indices     INTEGER[],
+    verdict           TEXT,
+    rationale         TEXT,
+    judge_model       TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    metadata_mismatch TEXT,
+    coverage_score    DOUBLE PRECISION
+);
+
+CREATE INDEX IF NOT EXISTS idx_eval_judgments_q ON eval_judgments (question_id);
+
+-- Whole conversations captured for later analysis. Only sessions whose first
+-- message is prefixed "TEST " are recorded, so ordinary user chats are never stored here.
+CREATE TABLE IF NOT EXISTS eval_conversations (
+    id          BIGSERIAL   PRIMARY KEY,
+    session_id  TEXT        NOT NULL,
+    turn_index  INTEGER     NOT NULL,
+    stream      BOOLEAN     NOT NULL DEFAULT FALSE,
+    started_at  TIMESTAMPTZ NOT NULL,
+    finished_at TIMESTAMPTZ NOT NULL,
+    duration_s  DOUBLE PRECISION,
+    iterations  INTEGER,
+    has_error   BOOLEAN     NOT NULL DEFAULT FALSE,
+    doc         JSONB       NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS eval_conversations_session_idx ON eval_conversations (session_id, started_at);
