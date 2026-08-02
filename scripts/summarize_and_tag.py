@@ -26,7 +26,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List
-from colorprinter import print_red, print_green
+from packages.colorprinter import print_red, print_green
 
 def log(msg):
     print(msg, flush=True)
@@ -54,7 +54,7 @@ logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("openai").setLevel(logging.WARNING)
 
-from _llm import LLM
+from packages.llm import LLM
 from postgres_client import pg
 
 # ─────────────────────────────────────────────────────────────────────────────

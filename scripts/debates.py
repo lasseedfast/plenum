@@ -17,8 +17,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 os.chdir("/home/lasse/riksdagen")
 sys.path.append("/home/lasse/riksdagen")
 
-from _llm import LLM
-from colorprinter import *
+from packages.llm import LLM
+from packages.colorprinter import *
 from postgres_client import pg
 
 

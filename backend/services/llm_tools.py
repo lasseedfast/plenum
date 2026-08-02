@@ -23,11 +23,11 @@ from contextvars import ContextVar
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import psycopg2.extras
-from colorprinter import *
+from packages.colorprinter import *
 from pgvector.psycopg2 import register_vector
 from pydantic import BaseModel, Field
 
-from _llm import LLM, get_tools, register_tool
+from packages.llm import LLM, get_tools, register_tool
 from backend.services.search import MotionSearchService, SearchService
 from postgres_client import pg
 

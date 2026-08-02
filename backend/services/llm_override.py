@@ -18,7 +18,7 @@ from typing import Tuple
 
 from pydantic import BaseModel, Field
 
-from _llm import LLM
+from packages.llm import LLM
 
 from backend.services.provider_registry import ResolvedProvider, get_provider, get_server_api_key
 

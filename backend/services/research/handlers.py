@@ -14,7 +14,7 @@ import logging
 import os
 from typing import Optional
 
-from _llm import LLM
+from packages.llm import LLM
 
 from backend.services import llm_override
 from backend.services.research import board as board_mod

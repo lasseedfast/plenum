@@ -18,8 +18,8 @@ import logging
 import os
 from typing import Callable, Dict, List, Optional
 
-from _llm import get_tools
-from _llm._llm.tool_registry import TOOL_REGISTRY
+from packages.llm import get_tools
+from packages.llm.tools import TOOL_REGISTRY
 
 from backend.services.llm_tools import (
     HitsResponse,

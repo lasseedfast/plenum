@@ -10,8 +10,8 @@ import re as _re
 import threading
 from typing import Any, Callable, Dict, Generator, List, Optional, Sequence, Tuple
 
-from _llm import LLM, get_tools, ChatCompletionMessage
-from colorprinter import *
+from packages.llm import LLM, get_tools, ChatCompletionMessage
+from packages.colorprinter import *
 
 from backend.services.chat import (
     FAST_MODEL,

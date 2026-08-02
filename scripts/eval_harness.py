@@ -46,7 +46,7 @@ _stub_pkg("backend", str(_ROOT / "backend"))
 _stub_pkg("backend.services", str(_ROOT / "backend/services"))
 
 from postgres_client import pg
-from _llm import LLM
+from packages.llm import LLM
 from backend.services.chat import ChatService, SMART_MODEL, FAST_MODEL
 
 

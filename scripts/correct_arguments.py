@@ -45,7 +45,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("openai").setLevel(logging.WARNING)
 
-from _llm import LLM
+from packages.llm import LLM
 from postgres_client import pg
 
 # ─────────────────────────────────────────────────────────────────────────────

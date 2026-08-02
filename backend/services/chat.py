@@ -22,7 +22,7 @@ from backend.services.llm_tools import (
     _fast_llm_var,
     share_insight,
 )
-from _llm import LLM, get_tools, ChatCompletionMessage
+from packages.llm import LLM, get_tools, ChatCompletionMessage
 from backend.services.provenance import (
     ProvenanceRegistry,
     SourceRecord,
@@ -36,7 +36,7 @@ from backend.services.research_models import (
     SubFinding,
     SubQuestion,
 )
-from colorprinter import *
+from packages.colorprinter import *
 import json
 import re
 from datetime import date
