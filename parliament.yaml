@@ -24,11 +24,13 @@ language:
   # mismatch returns near-zero rows with no error.
   # See: SELECT cfgname FROM pg_ts_config;
   fts_config: swedish
-  prompt_language: sv               # selects prompts/<lang>/ and the answer language
+  prompt_language: sv               # selects prompts/<lang>/
+  name: svenska                     # the language's own name, for prompts
+  name_en: Swedish                  # its English name, for English-language prompts
   locale: sv-SE
   # Characters that must survive verbatim into search queries. Transliterating
   # these silently breaks matching on most Swedish terms.
-  preserve_characters: "åäöÅÄÖ"
+  preserve_characters: "åäö"
   months:
     januari: "01"
     februari: "02"

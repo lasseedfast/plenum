@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from packages.llm import LLM, get_tools, register_tool
 from backend.services.search import MotionSearchService, SearchService
 from postgres_client import pg
+from prompts_loader import load_prompt
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -906,15 +907,7 @@ def fetch_documents(_ids: list[str], collection: str = "", fields: list = []) ->
 # orchestrator's context, only the answer to one specific question does)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_READER_SYSTEM = (
-    "Du läser anföranden och dokument från svenska riksdagen och svarar koncist "
-    "på EN specifik fråga om dem. Returnera ENDAST det som är relevant för frågan. "
-    "Citera korta ordagranna fraser där det stärker svaret (max ~200 tecken per "
-    "citat) och tagga varje påstående/citat med källans tagg exakt som den står i "
-    "dokumenthuvudet, t.ex. [src:H40911]. Säg 'inget i dokumenten' om svaret inte "
-    "finns i texterna du fått. Hitta aldrig på något. Skriv inte ut hela dokument. "
-    "Svara på svenska."
-)
+_READER_SYSTEM = load_prompt("tools/reader")
 
 _READER_MAX_DOCS = 6
 _READER_SINGLE_BUDGET = 30000   # chars of full text when reading one document

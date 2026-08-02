@@ -48,6 +48,8 @@ class Language:
     prompt_language: str
     locale: str
     preserve_characters: str
+    name: str = ""            # the language's own name, e.g. "svenska"
+    name_en: str = ""         # its English name, e.g. "Swedish"
     months: dict[str, str] = field(default_factory=dict)
 
 

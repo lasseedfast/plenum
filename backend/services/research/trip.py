@@ -29,6 +29,7 @@ from backend.services.llm_tools import (
 )
 from backend.services.provenance import normalize_talk_id
 from backend.services.research.models import ResearchLead, ThreadResearch
+from prompts_loader import load_prompt
 
 log = logging.getLogger("riksdagen.research.trip")
 
@@ -47,17 +48,9 @@ RESEARCH_TOOL_RESULT_CHARS = int(os.getenv("RESEARCH_TOOL_RESULT_CHARS", "4000")
 RESEARCH_TRIP_MAX_TURNS = int(os.getenv("RESEARCH_TRIP_MAX_TURNS", "6"))
 _FINAL_MAX_TOKENS = 1600
 
-_TRIP_SYSTEM = """Du är en undersökande researcher som gräver i tal och dokument från svenska riksdagen åt en journalist.
-Din uppgift är INTE att dra slutsatser eller skriva färdiga svar — den uppgiften är journalistens. Din uppgift är att vaska fram de mest intressanta, GRUNDADE bitarna kring en fråga: konkreta uppgifter, citat, motsägelser, positionsskiften, luckor och trådar att dra i.
-Använd verktygen för att läsa primärmaterialet. Behöver du veta vad specifika tal faktiskt säger — använd read_documents_for med en fokuserad fråga.
-Hitta aldrig på något — varje fynd ska gå att belägga med en källa du faktiskt sett i ett verktygsresultat. Skriv på svenska.
-Datatips: åäö ska behållas i sökningar; database_query använder search_vector @@ websearch_to_tsquery('swedish', ...) för innehållssökningar, aldrig LIKE på anforandetext."""
+_TRIP_SYSTEM = load_prompt("research/trip")
 
-_FINAL_INSTRUCTION = """Sammanställ nu det du hittat som JSON enligt schemat:
-- findings: de intressanta, grundade bitarna. Varje finding är EN konkret uppgift — något som sägs eller visas i materialet — inte ett helt dokument. `label` är en kort konkret rubrik för själva uppgiften ('Miljöpartiet krävde stopp för nya reaktorer 2019'), ALDRIG en dokumenttitel. Varje finding MÅSTE ha ett kort ordagrant `quote` ur materialet som belägger uppgiften — har du inget citat, ta inte med uppgiften. `detail` = vad uppgiften visar (INGEN slutsats). `source_id` = det tal-id (t.ex. 'H40911') du sett i verktygsresultaten som citatet kommer ur.
-- open_questions: frågor som fortfarande är obesvarade och värda att gräva vidare i.
-- leads: nästa konkreta steg. kind='search' med target=en ny konkret sökfråga; kind='person' med target=ett intressent_id du SETT i verktygsresultaten; kind='debate' med target=ett debatt-id (t.ex. '2021-06-17:42') du SETT i verktygsresultaten. `lead` förklarar vad som ska göras och varför.
-VIKTIGT: i label, detail, open_questions och lead skriver du klartext med personers NAMN — id:n hör bara hemma i source_id/target. Skriv inte om din egen sökprocess. Hellre färre välgrundade fynd än många gissade."""
+_FINAL_INSTRUCTION = load_prompt("research/trip_final")
 
 
 def _compact_result_string(structured, raw_result) -> str:

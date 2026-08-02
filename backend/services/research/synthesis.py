@@ -13,6 +13,7 @@ import logging
 import os
 import re
 from typing import Iterable, List, Optional
+from prompts_loader import load_prompt
 
 log = logging.getLogger("riksdagen.research.synthesis")
 
@@ -21,14 +22,9 @@ RESEARCH_REPORT_MAX_TOKENS = int(os.getenv("RESEARCH_REPORT_MAX_TOKENS", "3500")
 
 CITE_RE = re.compile(r"\[källa:\s*([\w\-]+)\s*\]")
 
-_ANSWER_SYSTEM = """Du är en grävande reporter som sammanställer sin research ur den svenska riksdagens debatter till ett genomarbetat svar.
-Skriv detaljerat och konkret i markdown: vem sa vad, när, hur argumenten förändrades, var motsägelserna finns. Väv in de ordagranna citaten (inom citattecken, med talare och parti) — citaten är bevisen.
-Varje sakpåstående ska följas av en källmarkör i formatet [källa:ID] där ID är ett käll-id ur underlaget. Använd ENBART käll-id som förekommer i underlaget — hitta aldrig på id, citat, personer eller fakta. Skriv inget som saknar stöd i underlaget.
-Använd som mest ###-rubriker. Avsluta med ett kort stycke under rubriken "### Vad som återstår" om det som ännu är obesvarat."""
+_ANSWER_SYSTEM = load_prompt("research/answer")
 
-_REPORT_SYSTEM = """Du är redaktör och skriver den samlade rapporten av en grävande research i den svenska riksdagens debatter.
-Väv ihop trådarnas svar till EN sammanhängande, detaljerad rapport i markdown: berättelsen, positionsskiftena, motsägelserna och mönstren över tid — inte en mekanisk lista över trådarna. Ordna i ##-sektioner efter tema. Börja med en kort ingress som fångar huvudfynden.
-Behåll de ordagranna citaten (inom citattecken, med talare och parti) — de bär rapporten. Varje sakpåstående ska följas av en källmarkör i formatet [källa:ID] med ett käll-id ur underlaget. Använd ENBART käll-id som förekommer i underlaget — hitta aldrig på id, citat, personer eller fakta."""
+_REPORT_SYSTEM = load_prompt("research/report")
 
 
 def ground_citations(text: str, allowed_ids: Iterable[str]) -> str:
