@@ -1,0 +1,12 @@
+[Unit]
+Description=Run riksdagen daily motions sync at 06:30
+
+[Timer]
+# 06:30 — offset from the 06:00 talks sync so they don't compete for the
+# embedding host and the Postgres pool
+OnCalendar=*-*-* 06:30:00
+# If the server was off at 06:30, run the job as soon as it comes back up
+Persistent=true
+
+[Install]
+WantedBy=timers.target

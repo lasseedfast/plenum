@@ -1,0 +1,11 @@
+[Unit]
+Description=Run riksdagen daily talk sync at 06:00
+
+[Timer]
+# Run every day at 06:00
+OnCalendar=*-*-* 06:00:00
+# If the server was off at 06:00, run the job as soon as it comes back up
+Persistent=true
+
+[Install]
+WantedBy=timers.target

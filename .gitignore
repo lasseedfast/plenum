@@ -1,0 +1,55 @@
+# Secrets and machine-local config — never commit
+.env
+.env.*
+!.env.example
+providers.yaml
+parliament.local.yaml
+*.pem
+*.key
+*.p12
+id_rsa*
+credentials*.json
+.claude/settings.local.json
+
+# Archives. A WireGuard backup was committed to the predecessor repo this way.
+*.tgz
+*.tar.gz
+*.zip
+
+# Bulk source data — fetched with the ingest CLI, never vendored
+data/
+documents/
+motioner/
+talks/
+personer/
+chromadb_data/
+
+# Runtime output
+logs/
+*.log
+*.pid
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+.venv/
+venv/
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+*.excalidraw
+
+# NOTE: `*.sql` is deliberately NOT ignored. The predecessor repo ignored it and
+# thereby hid 14 of its 16 database migrations from version control.
