@@ -8,14 +8,15 @@ Funktioner:
   make_debate_ids()             → tilldelas debatt-ID till alla anföranden utan ett sådant
   process_debate_date(date, ..) → sammanfattar alla debatter för ett datum
 """
+from pathlib import Path
 
 import os
 import sys
 from time import sleep
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-os.chdir("/home/lasse/riksdagen")
-sys.path.append("/home/lasse/riksdagen")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
 
 from packages.llm import LLM
 from packages.colorprinter import *

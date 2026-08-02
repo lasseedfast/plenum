@@ -12,13 +12,14 @@ dokumentlista-API:et (https://data.riksdagen.se/dokumentlista/?doktyp=mot&sort=s
 
 Kör manuellt: python scripts/sync_motions.py
 """
+from pathlib import Path
 
 import logging
 import os
 import sys
 
-os.chdir("/home/lasse/riksdagen")
-sys.path.append("/home/lasse/riksdagen")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
 
 logging.basicConfig(
     level=logging.INFO,

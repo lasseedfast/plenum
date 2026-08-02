@@ -5,7 +5,6 @@ from urllib.request import urlopen
 from zipfile import ZipFile
 import os
 from time import sleep
-import talks2db
 
 
 def download(all=False, year=None):

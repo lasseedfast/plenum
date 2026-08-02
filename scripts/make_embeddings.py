@@ -14,6 +14,7 @@ The search_vector column on talks is kept in sync by a trigger – no manual upd
 Usage:
   python scripts/make_embeddings.py
 """
+from pathlib import Path
 
 import logging
 import os
@@ -23,8 +24,8 @@ from typing import Dict, List
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-os.chdir("/home/lasse/riksdagen")
-sys.path.append("/home/lasse/riksdagen")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
 
 from postgres_client import pg
 from utils import TextChunker

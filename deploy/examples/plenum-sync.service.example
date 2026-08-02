@@ -1,0 +1,26 @@
+# Daily incremental ingest. Paired with plenum-sync.timer.
+#
+# Copy to /etc/systemd/system/plenum-sync.service and substitute __PROJECT_ROOT__
+# and __USER__ as described in plenum-api.service.example.
+#
+# `--source all` runs every source declared under `sources:` in parliament.yaml.
+# Use `--source speeches` / `--source documents` to split them across timers.
+
+[Unit]
+Description=Plenum daily source sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__USER__
+WorkingDirectory=__PROJECT_ROOT__
+EnvironmentFile=__PROJECT_ROOT__/.env
+ExecStart=__PROJECT_ROOT__/.venv/bin/python -m ingest.cli sync --source all
+
+# journalctl -u plenum-sync
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

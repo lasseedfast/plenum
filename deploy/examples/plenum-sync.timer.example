@@ -1,0 +1,17 @@
+# Runs plenum-sync.service once a day.
+#
+# Pick a time shortly after the source publishes its daily update. Sources that
+# are heavy on the embedding host are best staggered rather than run together.
+
+[Unit]
+Description=Run the Plenum source sync daily
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+# If the machine was off at the scheduled time, run once it comes back up.
+Persistent=true
+# Avoid every deployment hitting the upstream open-data server at the same second.
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target

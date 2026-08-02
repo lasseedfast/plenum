@@ -12,6 +12,7 @@ metadata + fulltext som HTML). Extraheras till motioner/mot-{range}/.
 Backfill (alla perioder 1990→):  python scripts/download_motions.py
 Används av sync_motions.py för daglig uppdatering av aktuell period.
 """
+from pathlib import Path
 
 import logging
 import os
@@ -20,8 +21,8 @@ from io import BytesIO
 from urllib.request import urlopen
 from zipfile import ZipFile
 
-os.chdir("/home/lasse/riksdagen")
-sys.path.append("/home/lasse/riksdagen")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
 
 logging.basicConfig(
     level=logging.INFO,

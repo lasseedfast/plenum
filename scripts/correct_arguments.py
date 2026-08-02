@@ -18,6 +18,7 @@ Tracks completion via `arguments_corrected` column (resumable).
     nohup python scripts/correct_arguments.py >> logs/correct_arguments.log 2>&1 &
     echo $! > logs/correct_arguments.pid
 """
+from pathlib import Path
 
 import json
 import logging
@@ -28,8 +29,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-os.chdir("/home/lasse/riksdagen")
-sys.path.append("/home/lasse/riksdagen")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
 
 from dotenv import load_dotenv
 load_dotenv()

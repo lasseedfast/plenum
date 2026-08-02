@@ -8,7 +8,7 @@
 #
 # Starta frikopplat:  nohup scripts/backfill_motions.sh > backfill_motions.log 2>&1 &
 set -e
-cd /home/lasse/riksdagen
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY=.venv/bin/python
 
 echo "=== Step 1: download all ranges ==="

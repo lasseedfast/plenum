@@ -6,14 +6,15 @@ Används av sync_motions.py (update_folder) och kan köras direkt för att
 
     python scripts/motions_to_postgres.py
 """
+from pathlib import Path
 
 import json
 import logging
 import os
 import sys
 
-os.chdir("/home/lasse/riksdagen")
-sys.path.append("/home/lasse/riksdagen")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
 
 from bs4 import BeautifulSoup
 from postgres_client import pg
@@ -255,7 +256,7 @@ if __name__ == "__main__":
     existing = {row["dok_id"] for row in pg.execute("SELECT dok_id FROM motions")}
     total = 0
     for folder in sorted(os.listdir("motioner")):
-        path = os.path.join("/home/lasse/riksdagen/motioner", folder)
+        path = str(bootstrap.DATA_DIR / 'motioner' / folder)
         if not os.path.isdir(path):
             continue
         print(f"Processing {folder} …", end=" ", flush=True)

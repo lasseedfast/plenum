@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-REPO="/home/lasse/riksdagen"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$REPO/logs"
 PYTHON="python"
 
@@ -71,9 +71,8 @@ ok "Step 2 done"
 step "Step 3 — Assign debate IDs"
 
 $PYTHON - <<'PYEOF' 2>&1 | tee "$LOG_DIR/step3_debate_ids.log"
-import os, sys
-os.chdir("/home/lasse/riksdagen")
-sys.path.insert(0, "/home/lasse/riksdagen")
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path.cwd()))
 from scripts.debates import make_debate_ids
 make_debate_ids()
 print("Debate ID assignment complete.")

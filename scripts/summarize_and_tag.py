@@ -15,6 +15,7 @@ Multi-turn strategy: The speech is sent once and cached by vLLM. Three
 subsequent turns ask for summary, arguments, and tags separately, reusing
 the KV cache of all previous turns.
 """
+from pathlib import Path
 
 import difflib
 import json
@@ -31,8 +32,8 @@ from packages.colorprinter import print_red, print_green
 def log(msg):
     print(msg, flush=True)
 
-os.chdir("/home/lasse/riksdagen")
-sys.path.append("/home/lasse/riksdagen")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
 
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv

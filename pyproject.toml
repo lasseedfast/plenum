@@ -1,0 +1,85 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plenum"
+version = "0.1.0"
+description = "Search, chat and research over parliamentary speeches and documents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Lasse Edfast", email = "lasse@edfast.se" }]
+keywords = ["parliament", "open-data", "rag", "civic-tech", "full-text-search"]
+classifiers = [
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Topic :: Text Processing :: Indexing",
+]
+
+# Derived from the actual import graph, not from a frozen environment, so the list
+# stays readable and reviewable. Run `python -m scripts.check_deps` to re-verify.
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.6",
+    "psycopg2-binary>=2.9",
+    "pgvector>=0.2.5",
+    "openai>=1.30",
+    "python-dotenv>=1.0",
+    "PyYAML>=6.0",
+    "requests>=2.31",
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+    "bcrypt>=4.1",
+    "cryptography>=42.0",
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+# The MCP server is optional: the web app runs without it.
+mcp = ["fastmcp>=0.2"]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/lasseedfast/plenum"
+Source = "https://git.edfast.se/plenum/plenum"
+
+[project.scripts]
+plenum-ingest = "ingest.cli:main"
+
+[tool.setuptools]
+# Root-level modules kept for import compatibility with existing call sites.
+py-modules = ["postgres_client", "utils", "bootstrap", "parliament"]
+
+[tool.setuptools.packages.find]
+include = ["backend*", "packages*", "_postgres*", "ingest*"]
+exclude = ["tests*", "scripts*", "docs*", "frontend*"]
+
+[tool.setuptools.package-data]
+"_postgres" = ["*.sql", "migrations/*.sql"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",  # line length is handled by the formatter
+    "B008",  # FastAPI's Depends() in defaults is idiomatic
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Star-imports of the console helpers predate this config; tracked for cleanup.
+"backend/services/chat.py" = ["F403", "F405"]
+"backend/services/llm_tools.py" = ["F403", "F405"]
+"backend/services/mp_chat.py" = ["F403", "F405"]
+"scripts/debates.py" = ["F403", "F405"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

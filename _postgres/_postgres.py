@@ -12,6 +12,7 @@ Environment variables:
   PG_PASSWORD - Password
 """
 
+import threading
 import os
 from typing import Any, List, Optional
 
@@ -55,17 +56,30 @@ class Postgres:
         self.application_name = os.environ.get("PG_APPLICATION_NAME", "riksdagen-app")
         self.session_options = self._build_session_options()
 
-        self._pool = psycopg2.pool.ThreadedConnectionPool(
-            self.minconn,
-            self.maxconn,
-            host=self.host,
-            port=self.port,
-            dbname=self.dbname,
-            user=self.user,
-            password=self.password,
-            application_name=self.application_name,
-            options=self.session_options,
-        )
+        # The pool is opened on first use, not here. Constructing it eagerly made
+        # `import backend.app` fail outright without a reachable database, which
+        # broke test collection, `--help`, and any tooling that merely imports the app.
+        self._pool = None
+        self._pool_lock = threading.Lock()
+
+    @property
+    def pool(self) -> psycopg2.pool.ThreadedConnectionPool:
+        """Open the connection pool on first access."""
+        if self._pool is None:
+            with self._pool_lock:
+                if self._pool is None:  # another thread may have won the race
+                    self._pool = psycopg2.pool.ThreadedConnectionPool(
+                        self.minconn,
+                        self.maxconn,
+                        host=self.host,
+                        port=self.port,
+                        dbname=self.dbname,
+                        user=self.user,
+                        password=self.password,
+                        application_name=self.application_name,
+                        options=self.session_options,
+                    )
+        return self._pool
 
     def _build_session_options(self) -> str:
         """
@@ -104,12 +118,12 @@ class Postgres:
         return " ".join(option_parts)
 
     def _get_conn(self):
-        conn = self._pool.getconn()
+        conn = self.pool.getconn()
         register_vector(conn)
         return conn
 
     def _put_conn(self, conn):
-        self._pool.putconn(conn)
+        self.pool.putconn(conn)
 
     def execute(self, query: str, params: Optional[tuple] = None) -> List[dict]:
         """
@@ -205,4 +219,4 @@ class Postgres:
 
     def close(self):
         """Close all connections in the pool."""
-        self._pool.closeall()
+        self.pool.closeall()

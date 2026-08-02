@@ -1,0 +1,57 @@
+# nginx site for Plenum: static frontend + API reverse proxy.
+#
+# Substitute __DOMAIN__ and __PROJECT_ROOT__, then place in
+# /etc/nginx/sites-available/ and symlink into sites-enabled/.
+#
+# Obtain the certificate first (certbot --nginx -d __DOMAIN__); the TLS paths
+# below assume Let's Encrypt's default layout.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __DOMAIN__;
+
+    # ACME challenges must stay on port 80.
+    location /.well-known/acme-challenge/ { root /var/www/html; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name __DOMAIN__;
+
+    ssl_certificate     /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem;
+
+    # Chat and research stream over SSE. Buffering would hold events until the
+    # response completed, which looks exactly like a hung request to the user.
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        # A deep-research turn can legitimately run for minutes.
+        proxy_read_timeout 600s;
+    }
+
+    root __PROJECT_ROOT__/frontend/dist;
+    index index.html;
+
+    # Vite emits content-hashed filenames, so assets are safe to cache forever.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Single-page app: unknown paths are client-side routes, not 404s.
+    location / { try_files $uri $uri/ /index.html; }
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+}

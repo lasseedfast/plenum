@@ -7,13 +7,14 @@ whenever needed to catch any talks the summarize_and_tag script missed.
 Usage:
     python scripts/embed_summaries.py
 """
+from pathlib import Path
 
 import logging
 import os
 import sys
 
-os.chdir("/home/lasse/riksdagen")
-sys.path.append("/home/lasse/riksdagen")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
 
 from postgres_client import pg
 

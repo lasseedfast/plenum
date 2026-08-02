@@ -8,6 +8,7 @@ Används av sync_talks.py (update_folder) och kan köras direkt för att
 
     python scripts/documents_to_postgres.py
 """
+from pathlib import Path
 
 import json
 import logging
@@ -15,8 +16,8 @@ import os
 import re
 import sys
 
-os.chdir("/home/lasse/riksdagen")
-sys.path.append("/home/lasse/riksdagen")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
 
 from postgres_client import pg
 
@@ -153,7 +154,7 @@ if __name__ == "__main__":
     existing = {row["id"] for row in pg.execute("SELECT id FROM talks")}
     total = 0
     for folder in sorted(os.listdir("talks")):
-        path = os.path.join("/home/lasse/riksdagen/talks", folder)
+        path = str(bootstrap.DATA_DIR / 'talks' / folder)
         if not os.path.isdir(path):
             continue
         print(f"Processing {folder} …", end=" ", flush=True)

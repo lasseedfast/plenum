@@ -38,9 +38,8 @@ echo "=== Step 3: Generate missing debate summaries (one pass) ==="
 # Run debates.py in a subprocess that exits after one full pass.
 # For continuous summarization, run: screen -S debates python scripts/debates.py
 python - <<'PYEOF'
-import os, sys
-os.chdir("/home/lasse/riksdagen")
-sys.path.append("/home/lasse/riksdagen")
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path.cwd()))
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from scripts.debates import process_ready_debate, process_debate_date

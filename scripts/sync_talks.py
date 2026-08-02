@@ -12,6 +12,7 @@ Pipeline (körs dagligen via systemd timer):
 
 Kör manuellt: python scripts/sync_talks.py
 """
+from pathlib import Path
 
 import logging
 import os
@@ -21,8 +22,8 @@ from io import BytesIO
 from urllib.request import urlopen
 from zipfile import ZipFile
 
-os.chdir("/home/lasse/riksdagen")
-sys.path.append("/home/lasse/riksdagen")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
 
 from postgres_client import pg
 

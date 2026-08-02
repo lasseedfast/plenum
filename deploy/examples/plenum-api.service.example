@@ -1,0 +1,45 @@
+# Plenum API (FastAPI behind nginx).
+#
+# Copy to /etc/systemd/system/plenum-api.service and substitute:
+#   __PROJECT_ROOT__  absolute path to the checkout, e.g. /srv/plenum
+#   __USER__          the account that owns the checkout
+#
+#   sed -e "s|__PROJECT_ROOT__|$PWD|g" -e "s|__USER__|$USER|g" \
+#       deploy/examples/plenum-api.service.example \
+#       | sudo tee /etc/systemd/system/plenum-api.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now plenum-api
+
+[Unit]
+Description=Plenum API
+Wants=network-online.target
+After=network-online.target postgresql.service
+# Don't hammer a genuinely broken deploy — give up after 5 failures in 5 minutes
+# so the unit lands in `failed`, where it is visible, instead of looping forever.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=__USER__
+WorkingDirectory=__PROJECT_ROOT__
+EnvironmentFile=__PROJECT_ROOT__/.env
+ExecStart=__PROJECT_ROOT__/.venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 8000
+
+# Research jobs run as detached children (start_new_session=True in
+# backend/services/research/jobs.py) so a long dig survives an API restart. The
+# default KillMode=control-group would kill the whole cgroup and take those jobs
+# with it, silently defeating that design. With KillMode=process only uvicorn is
+# signalled; orphans are reaped by reap_stale_jobs() and capped by MAX_JOB_RUNTIME_SECS.
+KillMode=process
+TimeoutStopSec=30
+
+Restart=always
+RestartSec=5
+
+# journalctl -u plenum-api -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=plenum-api
+
+[Install]
+WantedBy=multi-user.target

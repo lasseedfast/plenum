@@ -3,6 +3,6 @@ import sys
 
 def set_working_directory():
     """Set the working directory to project root."""
-    os.chdir("/home/lasse/riksdagen")
-    if "/home/lasse/riksdagen" not in sys.path:
-        sys.path.append("/home/lasse/riksdagen")
+    os.chdir(str(bootstrap.PROJECT_ROOT))
+    if str(bootstrap.PROJECT_ROOT) not in sys.path:
+        sys.path.append(str(bootstrap.PROJECT_ROOT))

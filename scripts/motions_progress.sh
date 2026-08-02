@@ -2,7 +2,7 @@
 # Progress of the motion embedding backfills. Run anytime:
 #   bash scripts/motions_progress.sh
 set -e
-cd /home/lasse/riksdagen
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PGPASSWORD=$(grep '^PG_PASSWORD=' .env | cut -d= -f2)
 PGDB=$(grep '^PG_DB=' .env | cut -d= -f2)
 PGUSER=$(grep '^PG_USER=' .env | cut -d= -f2)
