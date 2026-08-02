@@ -110,7 +110,7 @@ const SearchResultView = ({ card }: { card: LiveSearchCard }) => {
                         )}
                         <div className="rc-search__body">
                             {result.speaker && <span className="rc-search__speaker">{result.speaker}</span>}
-                            {result.party && <span className="party-chip rc-search__party-chip" data-party={result.party}>{result.party}</span>}
+                            {result.party && <span className="party-chip rc-search__party-chip" data-party={result.party} style={{ "--party-color": `var(--party-${result.party ?? ""})` } as React.CSSProperties}>{result.party}</span>}
                             {result.date && <span className="rc-search__date">{result.date}</span>}
                             {result.snippet && <p className="rc-search__snippet">{result.snippet}</p>}
                         </div>

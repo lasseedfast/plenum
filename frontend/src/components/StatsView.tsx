@@ -24,7 +24,7 @@ export function StatsView({ stats, meta }: Props) {
 						<PieChart>
 							<Pie data={partyEntries} dataKey={1} nameKey={0} innerRadius={60} outerRadius={100}>
 								{partyEntries.map(([party]) => (
-									<Cell key={party} fill={meta?.parties?.[party] ?? "#999"} />
+									<Cell key={party} fill={meta?.parties?.find((p) => p.code === party)?.color ?? meta?.party_defaults?.unknown_color ?? "#999"} />
 								))}
 							</Pie>
 							<Tooltip />

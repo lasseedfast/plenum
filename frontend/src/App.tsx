@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, useSearchParams, useNavigate } from "reac
 import { useQuery, useMutation } from "@tanstack/react-query"; // Hooks for data fetching & mutations
 import { fetchMeta, searchTalks, sendFeedback, setSessionId } from "./api";  // API functions
 import type { SearchFilters, TalkHit } from "./types";
+import { setPhotoUrlTemplate } from "./utils/markdown";
 import { Link } from "react-router-dom";
 import { SearchPanel } from "./components/SearchPanel";       // Search form & filters
 import { StatsView } from "./components/StatsView";           // Stats visualization
@@ -87,6 +88,20 @@ function SearchView() {
 		queryFn: fetchMeta,
 	});
 
+	// Publish the configured palette as CSS custom properties. Doing it here rather
+	// than in the stylesheet is what lets a non-Swedish deployment render its own
+	// parties: CSS cannot read a dict, so hardcoded per-party rules could never adapt.
+	useEffect(() => {
+		if (!meta.data) return;
+		const root = document.documentElement;
+		for (const party of meta.data.parties) {
+			root.style.setProperty(`--party-${party.code}`, party.color);
+		}
+		root.style.setProperty("--party-na", meta.data.party_defaults.unknown_color);
+		setPhotoUrlTemplate(meta.data.urls?.person_photo ?? "");
+		if (meta.data.site?.title) document.title = meta.data.site.title;
+	}, [meta.data]);
+
 	const feedback = useMutation({
 		mutationFn: sendFeedback,
 	});
@@ -158,7 +173,7 @@ function SearchView() {
 	}, [filters, speaker, speakerIds]);
 
 	const selectedDebateLabels = useMemo(() => {
-		const mapping = meta.data?.debate_types ?? {};
+		const mapping = meta.data?.activity_types ?? {};
 		return (filters.debates ?? []).map((code) => {
 			const debateType = mapping[code];
 			return typeof debateType === 'string' ? debateType : debateType?.title ?? code;

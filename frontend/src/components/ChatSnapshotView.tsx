@@ -66,7 +66,7 @@ function MpHeader({ intressent_id }: { intressent_id: string }) {
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
             <div>
                 <strong>{person.namn}</strong>
-                {person.parti && <span className="party-chip" data-party={person.parti}>{person.parti}</span>}
+                {person.parti && <span className="party-chip" data-party={person.parti} style={{ "--party-color": `var(--party-${person.parti ?? ""})` } as React.CSSProperties}>{person.parti}</span>}
                 <p className="snapshot-mp-header__disclaimer">
                     Fryst konversation med digital assistent – inte den riktiga personen.
                 </p>

@@ -94,6 +94,7 @@ export function ResultsTable({ results, exportResults, onLoadMore, nextBatchSize
 								key={hit._id}
 								className="results-table__row"
 								data-party={hit.party ?? ""}
+								style={{ "--party-color": `var(--party-${hit.party ?? ""})` } as React.CSSProperties}
 								onClick={handleRowClick}
 								role="button"
 								tabIndex={0}
@@ -120,7 +121,7 @@ export function ResultsTable({ results, exportResults, onLoadMore, nextBatchSize
 									)}
 								</td>
 								<td>
-									<span className="party-chip" data-party={hit.party ?? ""}>
+									<span className="party-chip" data-party={hit.party ?? ""} style={{ "--party-color": `var(--party-${hit.party ?? ""})` } as React.CSSProperties}>
 										{hit.party}
 									</span>
 								</td>

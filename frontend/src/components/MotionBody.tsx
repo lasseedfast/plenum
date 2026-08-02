@@ -54,7 +54,7 @@ export function MotionBody({ motion }: { motion: Motion }) {
 							<h1>{primary?.namn ?? motion.talare}</h1>
 						)}
 						{primary?.partibet && (
-							<span className="party-chip" data-party={primary.partibet}>{primary.partibet}</span>
+							<span className="party-chip" data-party={primary.partibet} style={{ "--party-color": `var(--party-${primary.partibet ?? ""})` } as React.CSSProperties}>{primary.partibet}</span>
 						)}
 					</div>
 					<div className="talk-view__speaker-meta">

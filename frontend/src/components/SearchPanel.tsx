@@ -57,9 +57,9 @@ export function SearchPanel({
 	onChatMentionSelect,
 	chatInputRef,
 }: Props) {
-	const partyOptions = useMemo(() => Object.keys(meta?.parties ?? {}).filter(Boolean), [meta]);
+	const partyOptions = useMemo(() => (meta?.parties ?? []).filter((p) => p.active).map((p) => p.code), [meta]);
 	const debateOptions = useMemo(
-		() => Object.entries(meta?.debate_types ?? {}),
+		() => Object.entries(meta?.activity_types ?? {}),
 		[meta],
 	);
 

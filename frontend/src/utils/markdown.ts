@@ -2,8 +2,16 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import type { ChatSource } from "../types";
 
-export const getMpPhotoUrl = (intressent_id: string): string =>
-    `https://data.riksdagen.se/filarkiv/bilder/ledamot/${intressent_id}_192.jpg`;
+// Set once from /api/meta (urls.person_photo). The Swedish default keeps portraits
+// rendering during the first paint, before meta has arrived.
+let photoUrlTemplate = "https://data.riksdagen.se/filarkiv/bilder/ledamot/{person_id}_192.jpg";
+
+export const setPhotoUrlTemplate = (template: string): void => {
+    if (template) photoUrlTemplate = template;
+};
+
+export const getMpPhotoUrl = (personId: string): string =>
+    photoUrlTemplate.replace("{person_id}", personId);
 
 /**
  * Converts Markdown to HTML and replaces [1], [2], ... with <sup> citations.

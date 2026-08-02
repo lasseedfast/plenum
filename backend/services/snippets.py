@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from info import months_conversion, party_colors_lighten
+from parliament import PARLIAMENT
 
 
 def datestring_to_iso(date_str: str) -> str:
     day, month_name, year = date_str.split(" ")
-    return f"{year}-{months_conversion[month_name]}-{day.zfill(2)}"
+    return f"{year}-{PARLIAMENT.language.months[month_name]}-{day.zfill(2)}"
 
 
 def _cleanup(text: str) -> str:
@@ -50,4 +50,4 @@ def make_snippet(text: str, search_terms: Iterable[str], long: bool = False) -> 
 
 
 def assign_party_highlight(party: str) -> str:
-    return party_colors_lighten.get(party, "#f0f0f0")
+    return PARLIAMENT.party_highlight_color(party)

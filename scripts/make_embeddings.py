@@ -27,6 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
 
+from parliament import PARLIAMENT
 from postgres_client import pg
 from utils import TextChunker
 
@@ -36,7 +37,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-EMBED_DIM = 384
+EMBED_DIM = PARLIAMENT.embeddings.dimension
 EMBED_BATCH = 20
 MAX_WORKERS = 3
 INSERT_BATCH = 100

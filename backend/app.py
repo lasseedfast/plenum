@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from postgres_client import pg
 
-from info import debate_types, explainer, limit_warning, party_colors
+from parliament import PARLIAMENT
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -50,6 +50,52 @@ app.include_router(names_autocomplete_router)
 
 
 @app.on_event("startup")
+def _verify_database_matches_config() -> None:
+    """Refuse to serve if the database disagrees with parliament.yaml.
+
+    Both mismatches below fail silently rather than loudly, which is why they are
+    checked here:
+
+    * A wrong text-search configuration makes every full-text query return almost
+      nothing, with no error — the app looks empty rather than broken.
+    * A vector column narrower or wider than `embeddings.dimension` fails inside
+      pgvector with a message that never mentions configuration.
+    """
+    from parliament import PARLIAMENT
+
+    try:
+        rows = pg.execute("SELECT current_setting('app.fts_config', true) AS cfg")
+        configured = PARLIAMENT.language.fts_config
+        actual = (rows[0]["cfg"] if rows else None) or None
+        if actual and actual != configured:
+            raise RuntimeError(
+                f"Database app.fts_config is {actual!r} but parliament.yaml declares "
+                f"{configured!r}. Fix with: "
+                f"ALTER DATABASE <db> SET app.fts_config = '{configured}';"
+            )
+
+        rows = pg.execute(
+            "SELECT a.atttypmod AS typmod FROM pg_attribute a "
+            "JOIN pg_class c ON c.oid = a.attrelid "
+            "WHERE c.relname = 'chunks' AND a.attname = 'embedding'"
+        )
+        if rows and rows[0]["typmod"] and rows[0]["typmod"] > 0:
+            actual_dim = rows[0]["typmod"]
+            if actual_dim != PARLIAMENT.embeddings.dimension:
+                raise RuntimeError(
+                    f"chunks.embedding is vector({actual_dim}) but parliament.yaml "
+                    f"declares embeddings.dimension={PARLIAMENT.embeddings.dimension}. "
+                    f"Re-embedding is required to change this."
+                )
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        # A database that is merely unreachable is not a configuration error;
+        # let the request path report that in its own terms.
+        print(f"[startup] could not verify database configuration: {exc}")
+
+
+@app.on_event("startup")
 def _reap_abandoned_jobs() -> None:
     """Finalize research jobs whose child died while the API was down."""
     from backend.services.research.jobs import reap_stale_jobs
@@ -74,12 +120,7 @@ def get_guide() -> str:
 
 @app.get("/api/meta")
 def meta():
-    return {
-        "parties": party_colors,
-        "debate_types": debate_types,
-        "explainer": explainer,
-        "limit_warning": limit_warning,
-    }
+    return PARLIAMENT.public_meta()
 
 
 @app.post("/api/search", response_model=SearchResponse)

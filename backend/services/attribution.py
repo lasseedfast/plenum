@@ -20,9 +20,15 @@ import re
 import unicodedata
 from typing import Any, Dict, List, Optional
 
+from parliament import PARLIAMENT
+
+# How a party code looks in rendered text. Configured per parliament: Swedish
+# codes are 1-3 uppercase letters including åäö, but other countries differ.
+_PARTY = PARLIAMENT.party_defaults["code_pattern"]
+
 # Matches [Name](/mp/12345) (PARTY) — the injected link with trailing party
 _SPEAKER_LINK_RE = re.compile(
-    r"\[([^\]]+)\]\(/mp/[^)]+\)\s*\(([A-ZÅÄÖ]{1,3})\)",
+    rf"\[([^\]]+)\]\(/mp/[^)]+\)\s*\(({_PARTY})\)",
     re.UNICODE,
 )
 
@@ -31,7 +37,7 @@ _SPEAKER_LINK_RE = re.compile(
 # We intentionally restrict "Name" to Title-case-ish tokens so we don't light up on
 # every parenthesised aside in the text.
 _PLAIN_SPEAKER_RE = re.compile(
-    r"(?<!\[)(?<!\w)([A-ZÅÄÖ][\wåäöÅÄÖ.\-']+(?:\s+[A-ZÅÄÖ][\wåäöÅÄÖ.\-']+){0,3})\s*\(([A-ZÅÄÖ]{1,3})\)",
+    rf"(?<!\[)(?<!\w)([A-ZÅÄÖ][\wåäöÅÄÖ.\-']+(?:\s+[A-ZÅÄÖ][\wåäöÅÄÖ.\-']+){{0,3}})\s*\(({_PARTY})\)",
     re.UNICODE,
 )
 

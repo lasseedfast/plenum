@@ -150,7 +150,7 @@ export function TalkView() {
 						) : (
 							<h1>{talk.talare}</h1>
 						)}
-						<span className="party-chip" data-party={talk.parti ?? ""}>
+						<span className="party-chip" data-party={talk.parti ?? ""} style={{ "--party-color": `var(--party-${talk.parti ?? ""})` } as React.CSSProperties}>
 							{talk.parti}
 						</span>
 					</div>

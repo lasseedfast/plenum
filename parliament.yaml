@@ -1,0 +1,184 @@
+# Everything specific to one parliament, in one file. Nothing secret belongs here.
+#
+# This is the Swedish Riksdag configuration, shipped as the worked example. To
+# target a different parliament, copy this file, change the values, and write an
+# ingest adapter — see docs/PORTING.md.
+#
+# Override the path with PARLIAMENT_CONFIG=/etc/plenum/parliament.yaml so a
+# deployment's own values live outside the repository and never appear in a diff.
+
+schema_version: 1
+
+parliament:
+  id: se-riksdagen
+  name: Sveriges riksdag            # in the language set below
+  name_en: Swedish Parliament
+  country: SE
+  chamber: unicameral               # unicameral | lower | upper
+  open_data_url: https://data.riksdagen.se
+  data_start_year: 1993
+
+language:
+  # Postgres text-search configuration. Must match the database's app.fts_config
+  # setting — the application refuses to start on a mismatch, because a silent
+  # mismatch returns near-zero rows with no error.
+  # See: SELECT cfgname FROM pg_ts_config;
+  fts_config: swedish
+  prompt_language: sv               # selects prompts/<lang>/ and the answer language
+  locale: sv-SE
+  # Characters that must survive verbatim into search queries. Transliterating
+  # these silently breaks matching on most Swedish terms.
+  preserve_characters: "åäöÅÄÖ"
+  months:
+    januari: "01"
+    februari: "02"
+    mars: "03"
+    april: "04"
+    maj: "05"
+    juni: "06"
+    juli: "07"
+    augusti: "08"
+    september: "09"
+    oktober: "10"
+    november: "11"
+    december: "12"
+
+# Domain words injected into prompts, written in `prompt_language`. These exist
+# because "motion", "yrkande" and "riksmöte" have no stable English equivalents;
+# the database columns are neutral and the country's own word lives here.
+vocabulary:
+  member: riksdagsledamot
+  member_plural: riksdagsledamöter
+  chamber: kammaren
+  speech: anförande
+  speech_plural: anföranden
+  document: motion
+  document_plural: motioner
+  proposal: yrkande
+  proposal_plural: yrkanden
+  committee: utskott
+  constituency: valkrets
+  session: riksmöte
+
+# Display order is list order. `active: false` keeps historical parties
+# renderable without offering them as a filter.
+parties:
+  - {code: S,   name: Socialdemokraterna,    color: "#E8112d", active: true}
+  - {code: M,   name: Moderaterna,           color: "#52BDEC", active: true}
+  - {code: SD,  name: Sverigedemokraterna,   color: "#DDDD00", active: true}
+  - {code: C,   name: Centerpartiet,         color: "#009933", active: true}
+  - {code: V,   name: Vänsterpartiet,        color: "#b51a0e", active: true}
+  - {code: KD,  name: Kristdemokraterna,     color: "#000077", active: true}
+  - {code: MP,  name: Miljöpartiet de gröna, color: "#83CF39", active: true}
+  - {code: L,   name: Liberalerna,           color: "#006AB3", active: true}
+  - {code: NYD, name: Ny demokrati,          color: "#ffff2b", active: false}
+
+party_defaults:
+  # Independents and unknowns.
+  unknown_color: "#9aa5b8"
+  # How a party code appears in rendered text, e.g. "Anna Andersson (MP)".
+  # Used to detect and verify attributions in generated answers.
+  code_pattern: "[A-ZÅÄÖ]{1,3}"
+
+# Keys are the values stored in talks.kammaraktivitet. Titles and descriptions
+# are shown in the UI and are in `prompt_language`.
+activity_types:
+  kam-vo: {title: Beslut,                   description: "Riksdagen fattar det formella beslutet i ärendet."}
+  bet:    {title: Debatt om beslut,         description: "Ledamöterna debatterar ett förslag innan beslut fattas."}
+  kam-fs: {title: Frågestund,               description: "Ministrar svarar direkt på frågor från ledamöter."}
+  kam-ar: {title: Information från regeringen, description: "Regeringen informerar riksdagen i en aktuell fråga."}
+  ip:     {title: Interpellationsdebatt,    description: "Debatt om en skriftlig fråga till en minister."}
+  kam-sf: {title: Statsministerns frågestund, description: "Statsministern svarar på frågor från ledamöter."}
+  sam-ou: {title: Öppen utfrågning,         description: "Utskottet frågar ut experter eller ansvariga personer offentligt."}
+  kam-ad: {title: Aktuell debatt,           description: "Snabb debatt om en aktuell politisk fråga."}
+  kam-al: {title: Allmänpolitisk debatt,    description: "Ledamöterna debatterar valfria politiska ämnen."}
+  kam-bu: {title: Budgetdebatt,             description: "Debatt om regeringens budgetförslag."}
+  kam-bp: {title: Bordläggning,             description: "Ett ärende anmäls i kammaren inför fortsatt behandling."}
+  kam-pd: {title: Partiledardebatt,         description: "Partiledarna debatterar politikens stora frågor."}
+  kam-dv: {title: Debatt med anledning av vårpropositionen, description: "Debatt om regeringens ekonomiska vårproposition."}
+  sam-se: {title: Öppet seminarium,         description: "Öppet seminarium eller samtal om ett särskilt tema."}
+  kam-ud: {title: Utrikespolitisk debatt,   description: "Debatt om Sveriges utrikespolitik."}
+
+# Glosses for values stored in the data. The values themselves are never
+# translated — only explained, so prompts can reason about them.
+document_subtypes:
+  Enskild motion: "Motion från en eller ett fåtal ledamöter"
+  Kommittémotion: "Motion från ett partis utskottsgrupp"
+  Partimotion: "Motion från ett helt parti, ofta undertecknad av partiledaren"
+
+decisions:
+  Bifall: {label: Bifall, meaning: approved}
+  Avslag: {label: Avslag, meaning: rejected}
+
+# Annual parliamentary session. Deliberately not called "term": the European
+# Parliament uses that for its five-year cycle, so it would be ambiguous.
+sessions:
+  label_format: "{start}/{end_short}"   # 2022 -> "2022/23"
+  starts_month: 9
+  first_year: 1990
+
+# Identifier shapes, templated into prompts and tool descriptions so the model
+# can recognise and construct them without them being hardcoded in Python.
+ids:
+  person_id:
+    example: "0448485371626"
+    pattern: "^[0-9]{10,13}$"
+    description: "Riksdagen intressent-id, a numeric string"
+  speech_id:
+    example: "GH09116-16"
+    pattern: "^[A-ZÅÄÖ0-9]+-[0-9]+$"
+    description: "{source_doc_id}-{sequence}"
+  doc_id:
+    example: "HD02846"
+    pattern: "^[A-ZÅÄÖ0-9]+$"
+    description: "Document id from the open-data portal"
+  debate_id:
+    example: "2021-06-17:42"
+    pattern: '^\d{4}-\d{2}-\d{2}:\d+$'
+    description: "{date}:{index within that day}"
+
+urls:
+  person_photo: "https://data.riksdagen.se/filarkiv/bilder/ledamot/{person_id}_192.jpg"
+  person_page: "https://www.riksdagen.se/sv/ledamoter-partier/ledamot/_{person_id}"
+  document_page: "https://www.riksdagen.se/sv/dokument-och-lagar/dokument/_{doc_id}"
+
+# Consumed by the ingest CLI. `adapter` names the module that knows this
+# source's JSON shape; everything else is data.
+sources:
+  adapter: ingest.adapters.riksdagen
+  speeches:
+    kind: zip-dataset
+    url_template: "https://data.riksdagen.se/dataset/anforande/anforande-{range}.json.zip"
+    dest_dir: talks
+  documents:
+    kind: zip-dataset
+    url_template: "https://data.riksdagen.se/dataset/dokument/mot-{range}.json.zip"
+    ranges: ["1990-1997", "1998-2001", "2002-2005", "2006-2009",
+             "2010-2013", "2014-2017", "2018-2021", "2022-2025"]
+    dest_dir: motioner
+  people:
+    kind: json
+    url: "https://data.riksdagen.se/personlista/?utformat=json"
+    dest_dir: personer
+
+embeddings:
+  model: qwen3-embedding             # LLM_MODEL_EMBEDDING overrides
+  # Must equal the vector(N) width of the embedding columns. Checked at startup
+  # against the actual column type, because a mismatch fails deep inside pgvector
+  # with an error that says nothing about configuration.
+  dimension: 384
+  base_url_env: EMBEDDING_BASE_URL
+  chunk_chars: 500
+
+# Served to the frontend via GET /api/meta.
+site:
+  title: rixdagen.se
+  tagline: "Sök i riksdagens anföranden och motioner"
+  # Markdown, so a deployment can rewrite its own copy without touching source.
+  explainer_file: content/sv/explainer.md
+  limit_warning_file: content/sv/limit_warning.md
+  # Upstream ships these empty. A deployment fills them in via its own
+  # PARLIAMENT_CONFIG file, which keeps personal contact details out of the repo.
+  contact:
+    email: null
+    url: null

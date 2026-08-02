@@ -1,6 +1,10 @@
 import React from "react";
 
-export function ExplainerText() {
+type Contact = { email: string | null; url: string | null };
+
+/** Contact details come from parliament.yaml, so a deployment can set its own
+ *  without editing this component. Omitted entirely when unset. */
+export function ExplainerText({ contact }: { contact?: Contact }) {
 	return (
 		<details className="explainer">
 			<summary className="explainer__summary">Hur fungerar söket?</summary>
@@ -27,10 +31,17 @@ export function ExplainerText() {
 					När du fått resultat kan du filtrera partier, justera år och välja debatttyper. Under &quot;Längre utdrag&quot; hittar
 					du hela tal med länkar till Webb-TV och ljud när de finns.
 				</p>
-				<p>
-					Har du idéer eller hittar buggar? <a href="mailto:lasse@edfast.se">Mejla mig</a> eller{" "}
-					<a href="https://twitter.com/lasseedfast">skriv på Twitter</a>. / Lasse Edfast, journalist.
-				</p>
+				{contact?.email && (
+					<p>
+						Har du idéer eller hittar buggar? <a href={`mailto:${contact.email}`}>Mejla mig</a>
+						{contact.url && (
+							<>
+								{" "}eller <a href={contact.url}>läs mer om sidan</a>
+							</>
+						)}
+						.
+					</p>
+				)}
 			</div>
 		</details>
 	);

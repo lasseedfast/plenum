@@ -199,23 +199,31 @@ class Postgres:
 
     def make_embeddings(self, texts: List[str]) -> List[List[float]]:
         # 1. Setup Client
-        client = OpenAI(
-            base_url=f"http://{os.environ.get('VLLM_EMBEDDING_HOST', '192.168.1.10:8003')}/v1",
-            api_key="vllm-key"
-        )
+        from parliament import PARLIAMENT
+
+        base_url = os.environ.get(PARLIAMENT.embeddings.base_url_env)
+        if not base_url:
+            raise RuntimeError(
+                f"{PARLIAMENT.embeddings.base_url_env} is not set. It must point at an "
+                f"OpenAI-compatible embeddings endpoint, e.g. http://localhost:8003/v1"
+            )
+        client = OpenAI(base_url=base_url, api_key=os.environ.get("EMBEDDING_API_KEY", "none"))
 
         # 2. Request Embeddings
         # We pass 'dimensions' in the body. Qwen3 usually supports this.
         response = client.embeddings.create(
             input=texts,
-            model=os.environ.get("LLM_MODEL_EMBEDDING", "qwen3-embedding"),
-            extra_body={"dimensions": 384} 
+            model=os.environ.get("LLM_MODEL_EMBEDDING", PARLIAMENT.embeddings.model),
+            extra_body={"dimensions": PARLIAMENT.embeddings.dimension},
         )
 
         # 3. Safety Slice
         # Even if the server returns the full 3584 dims by mistake, 
         # this ensures your DB doesn't throw a dimension mismatch error.
-        return [emb.embedding[:384] for emb in response.data]
+        dim = PARLIAMENT.embeddings.dimension
+        # Truncate defensively: not every server honours the `dimensions` request,
+        # and a wider vector than the column would fail deep inside pgvector.
+        return [emb.embedding[:dim] for emb in response.data]
 
     def close(self):
         """Close all connections in the pool."""

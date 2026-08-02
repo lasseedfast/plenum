@@ -55,11 +55,33 @@ export type DebateType = {
 	description: string;
 };
 
+export type Party = {
+	code: string;
+	name: string;
+	color: string;
+	active: boolean;
+};
+
 export type MetaResponse = {
-	parties: Record<string, string>;
-	debate_types: Record<string, DebateType>;
-	explainer: string;
-	limit_warning: string;
+	parliament: {
+		name: string;
+		name_en: string;
+		country: string;
+		data_start_year: number;
+	};
+	parties: Party[];
+	party_defaults: { unknown_color: string; code_pattern: string };
+	/** Keyed by the value stored in talks.kammaraktivitet. */
+	activity_types: Record<string, DebateType>;
+	vocabulary: Record<string, string>;
+	urls: Record<string, string>;
+	site: {
+		title: string;
+		tagline: string;
+		explainer: string;
+		limit_warning: string;
+		contact: { email: string | null; url: string | null };
+	};
 };
 
 export type ChatMessage = {

@@ -19,7 +19,12 @@ from dataclasses import dataclass, field
 from typing import Iterable, Sequence
 
 from postgres_client import pg
-from info import debate_types
+from parliament import PARLIAMENT
+
+# Postgres text-search configuration. Validated against ^[a-z_][a-z0-9_]*$ when
+# parliament.yaml loads, so interpolating it into SQL is safe — a config name is
+# an identifier and cannot be passed as a bind parameter.
+_FTS = PARLIAMENT.language.fts_config
 
 
 @dataclass
@@ -96,7 +101,7 @@ class SearchService:
         Build a tsquery SQL expression with %s placeholders for psycopg2.
 
         Returns:
-            tsq_sql   - SQL fragment, e.g. "plainto_tsquery('swedish', %s) && ..."
+            tsq_sql   - SQL fragment, e.g. "plainto_tsquery(<fts_config>, %s) && ..."
             tsq_params - list of values matching each %s in tsq_sql
             snippet_terms - raw terms used for snippet highlighting (informational)
 
@@ -119,11 +124,11 @@ class SearchService:
                 seen.add(clean)
             tsq_params.append(clean)
             if is_prefix:
-                return "to_tsquery('swedish', %s || ':*')"
+                return f"to_tsquery('{_FTS}', %s || ':*')"
             elif is_phrase:
-                return "phraseto_tsquery('swedish', %s)"
+                return f"phraseto_tsquery('{_FTS}', %s)"
             else:
-                return "plainto_tsquery('swedish', %s)"
+                return f"plainto_tsquery('{_FTS}', %s)"
 
         # MUST: all must match
         must_parts = [_add_term(t) for t in parsed.must_terms]
@@ -226,9 +231,9 @@ class SearchService:
             order_by = "ts_rank_cd(t.search_vector, q.tsq) DESC, t.datum ASC, t.anforande_nummer ASC"
             if include_snippets:
                 headline_col = (
-                    ", ts_headline('swedish', t.anforandetext, q.tsq, "
+                    f", ts_headline('{_FTS}', t.anforandetext, q.tsq, "
                     "'MaxWords=15, MinWords=8, MaxFragments=1') AS _headline"
-                    ", ts_headline('swedish', t.anforandetext, q.tsq, "
+                    f", ts_headline('{_FTS}', t.anforandetext, q.tsq, "
                     "'MaxWords=60, MinWords=30, MaxFragments=4') AS _headline_long"
                 )
             else:
@@ -300,7 +305,7 @@ class SearchService:
                 snippet_long = text[:800]
 
             kammaraktivitet = doc.get("kammaraktivitet")
-            debate_info = debate_types.get(kammaraktivitet, {})
+            debate_info = PARLIAMENT.activity_types.get(kammaraktivitet, {})
             debate_type_title = (
                 debate_info.get("title", kammaraktivitet)
                 if isinstance(debate_info, dict)
@@ -429,9 +434,9 @@ class MotionSearchService(SearchService):
             order_by = "ts_rank_cd(m.search_vector, q.tsq) DESC, m.datum DESC"
             if include_snippets:
                 headline_col = (
-                    ", ts_headline('swedish', m.text, q.tsq, "
+                    f", ts_headline('{_FTS}', m.text, q.tsq, "
                     "'MaxWords=15, MinWords=8, MaxFragments=1') AS _headline"
-                    ", ts_headline('swedish', m.text, q.tsq, "
+                    f", ts_headline('{_FTS}', m.text, q.tsq, "
                     "'MaxWords=60, MinWords=30, MaxFragments=4') AS _headline_long"
                 )
             else:

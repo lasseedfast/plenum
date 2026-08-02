@@ -42,16 +42,8 @@
 	--danger:      #a61f2c;
 	--danger-soft: rgba(166, 31, 44, 0.08);
 
-	/* Party colors */
-	--party-M:   #52bdec;
-	--party-S:   #e8112d;
-	--party-V:   #b51a0e;
-	--party-MP:  #83cf39;
-	--party-C:   #009933;
-	--party-KD:  #000077;
-	--party-L:   #006ab3;
-	--party-SD:  #dddd00;
-	--party-NYD: #ffff2b;
+	/* Party colours are injected at runtime from /api/meta (see App.tsx), so this
+	   stylesheet carries no country-specific values. Only the fallback lives here. */
 	--party-na:  #9aa5b8;
 
 	/* Typography — self-hosted via @fontsource (see main.tsx). The "Variable"
@@ -495,28 +487,18 @@ textarea {
 	background: #e5e7eb;
 }
 
-.party-chip[data-party="M"] { background: #52bdec33; color: #005884; }
-.party-chip[data-party="S"] { background: #e8112d33; color: #8c0e1d; }
-.party-chip[data-party="V"] { background: #b51a0e33; color: #8d170d; }
-.party-chip[data-party="MP"] { background: #83cf3933; color: #2f6d16; }
-.party-chip[data-party="C"] { background: #00993333; color: #0a5d24; }
-.party-chip[data-party="KD"] { background: #00007733; color: #122b8f; }
-.party-chip[data-party="L"] { background: #006ab333; color: #024270; }
-.party-chip[data-party="SD"] { background: #dddd0033; color: #8b8b09; }
-.party-chip[data-party="NYD"] { background: #ffff2b33; color: #8a7d05; }
+/* One rule for every party. `--party-color` is set inline by the component from
+   the colour /api/meta supplied; color-mix derives the tint and the text shade,
+   which is why no per-party lightened palette needs maintaining. */
+.party-chip {
+	background: color-mix(in srgb, var(--party-color, var(--party-na)) 20%, transparent);
+	color: color-mix(in srgb, var(--party-color, var(--party-na)) 75%, black);
+}
 .party-chip[data-party="-"],
 .party-chip[data-party=""] { background: #eceef3; color: var(--muted); }
+.results-table__row td:first-child { border-left-color: var(--party-color, var(--party-na)); }
 
 /* Party-color left border on result rows */
-.results-table__row[data-party="M"]   td:first-child { border-left-color: var(--party-M); }
-.results-table__row[data-party="S"]   td:first-child { border-left-color: var(--party-S); }
-.results-table__row[data-party="V"]   td:first-child { border-left-color: var(--party-V); }
-.results-table__row[data-party="MP"]  td:first-child { border-left-color: var(--party-MP); }
-.results-table__row[data-party="C"]   td:first-child { border-left-color: var(--party-C); }
-.results-table__row[data-party="KD"]  td:first-child { border-left-color: var(--party-KD); }
-.results-table__row[data-party="L"]   td:first-child { border-left-color: var(--party-L); }
-.results-table__row[data-party="SD"]  td:first-child { border-left-color: var(--party-SD); }
-.results-table__row[data-party="NYD"] td:first-child { border-left-color: var(--party-NYD); }
 .results-table__row[data-party="-"]   td:first-child,
 .results-table__row[data-party=""]    td:first-child { border-left-color: var(--party-na); }
 

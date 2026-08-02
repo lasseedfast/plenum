@@ -443,7 +443,7 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
                     <div className="mp-profile__name-row">
                         <h1 className="mp-profile__name">{person.namn}</h1>
                         {person.parti && (
-                            <span className="party-chip" data-party={person.parti}>
+                            <span className="party-chip" data-party={person.parti} style={{ "--party-color": `var(--party-${person.parti ?? ""})` } as React.CSSProperties}>
                                 {person.parti}
                             </span>
                         )}
