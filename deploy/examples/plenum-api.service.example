@@ -22,7 +22,11 @@ StartLimitBurst=5
 Type=exec
 User=__USER__
 WorkingDirectory=__PROJECT_ROOT__
-EnvironmentFile=__PROJECT_ROOT__/.env
+# No EnvironmentFile on purpose. systemd's parser is stricter than python-dotenv:
+# it does not accept spaces around '=', and treats quoting differently. The app
+# loads .env itself (python-dotenv, via _postgres), resolved relative to
+# WorkingDirectory. Adding EnvironmentFile here can silently produce keys with
+# trailing spaces, which then read as unset.
 ExecStart=__PROJECT_ROOT__/.venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 8000
 
 # Research jobs run as detached children (start_new_session=True in
