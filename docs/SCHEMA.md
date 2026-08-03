@@ -1,113 +1,133 @@
 # Database schema
 
-The definitive version is [`_postgres/schema.sql`](../_postgres/schema.sql), which is
-verified against the production database. This page explains it.
+The definitive version is [`_postgres/schema.sql`](../_postgres/schema.sql), verified
+against the production database. This page explains it.
 
-Column names are still Swedish, inherited from the original Riksdag-only project.
-They are only names — nothing in the application derives meaning from them — but they
-are an obstacle to reading the code, so a rename to neutral English is planned. Until
-then, this is the translation.
+Names are country-neutral English. Where a parliamentary concept has no stable
+English equivalent — the Swedish *yrkande*, *riksmöte* or *replik* — the column takes
+a neutral name and the country's own word lives in `parliament.yaml` under
+`vocabulary:`, where prompts pick it up. Data values are never translated.
 
 ## Core tables
 
-### `talks` — speeches in the chamber
-
-One row per speech. The primary key `id` comes from the source; note the separate
-`dok_id`, which identifies the *protocol document* the speech appeared in.
+### `speeches` — what was said in the chamber
 
 | Column | Meaning |
 |---|---|
-| `id` | Primary key, from the source record's `id` field |
-| `anforande_id` | The source's own UUID, preserved from an earlier key migration |
-| `anforandetext` | The speech text |
-| `avsnittsrubrik` | Heading of the agenda item |
-| `anforande_nummer` | Position within the debate |
-| `kammaraktivitet` | Activity type code; see `activity_types` in `parliament.yaml` |
-| `talare` | Speaker name as printed. Not the presiding officer — "speaker" in the plain sense |
-| `parti` | Party code |
-| `intressent_id` | Person id, references `people` |
-| `datum`, `dok_datum`, `year`, `period` | Date, raw source datetime, calendar year, session start year |
-| `dok_id`, `rel_dok_id`, `dok_nummer`, `hangar_id` | Source document references |
-| `titel` | Debate title |
-| `debate` | Debate grouping key, `"{date}:{index}"` |
-| `replik` | Whether this is a rebuttal (a short right-of-reply intervention) |
+| `id` | Primary key, from the source record |
+| `source_speech_id` | The source's own UUID, kept from an earlier key migration |
+| `text` | The speech itself |
+| `section_title` | Heading of the agenda item |
+| `sequence` | Position within the debate |
+| `activity_type` | Activity code; see `activity_types` in `parliament.yaml` |
+| `speaker_name` | Who spoke, as printed. Not the presiding officer — plain `speaker` would be ambiguous in a parliamentary schema, which is why the column is not called that |
+| `party`, `person_id` | Party code; person, referencing `people` |
+| `date`, `source_datetime`, `year`, `session_year` | Date, raw source string, calendar year, and the parliamentary session's start year |
+| `source_doc_id`, `related_doc_id`, `source_doc_number`, `source_record_id` | Source document references. `source_doc_id` is the protocol document the speech appeared in — not this row's own key |
+| `title` | Debate title |
+| `debate_id` | Groups speeches into a debate, `"{date}:{index}"` |
+| `is_reply` | A short right-of-reply intervention. The Swedish *replik* carries procedural standing this name does not capture; nothing downstream depends on it |
 | `summary`, `tags`, `arguments` | LLM-derived |
 | `summary_embedding` | Embedding of `summary`, for debate-level semantic search |
 | `search_vector` | Full-text vector, maintained by trigger |
 
-### `motions` — member-submitted documents
+### `documents` — what members submitted
 
-The Swedish *motion* is a formal proposal submitted by members. Each contains one or
-more numbered *yrkanden* — operative demands — which is what people actually search
-and cite.
+A *document* is anything a member formally puts to the chamber. `doc_type` says which
+kind; today everything is `'motion'`, and the column exists so bills, written
+questions and committee reports do not each need their own table later.
 
 | Column | Meaning |
 |---|---|
-| `dok_id` | Primary key |
-| `rm` | Session label, e.g. `"2022/23"` (Swedish *riksmöte*) |
-| `beteckning` | Number within the session |
-| `subtyp` | Whether submitted by an individual, a committee group, or a whole party |
-| `organ` | Committee the document was referred to |
-| `titel`, `undertitel`, `text` | Content |
-| `forslag_text` | The proposal texts concatenated — high-signal, weighted separately in search |
+| `doc_id` | Primary key |
+| `doc_type` | Kind of document; defaults to `'motion'` |
+| `session_label` | Which annual session, e.g. `"2022/23"`. Not called *term*: the European Parliament uses that for its five-year cycle |
+| `designation` | Number within the session |
+| `subtype` | Whether submitted by an individual, a committee group, or a whole party |
+| `committee` | Committee it was referred to |
+| `title`, `subtitle`, `text` | Content |
+| `proposals_text` | The proposal texts concatenated — high-signal, weighted separately in search |
 | `parties`, `author_names` | Denormalised authorship, in signing order |
-| `forslag`, `bilagor` | Raw proposal and attachment records from the source |
+| `proposals_raw`, `attachments` | Raw records from the source |
 | `has_text` | False for documents that exist only as scanned PDFs |
+| `session_year` | Derived from `session_label` |
 
-### `motion_yrkanden` — individual proposals within a document
+### `document_proposals` — the operative demands inside a document
+
+The unit people actually search and cite. The Swedish *yrkande* is a numbered,
+formally worded demand; English has no single word for it, hence the neutral name.
 
 | Column | Meaning |
 |---|---|
-| `lydelse` | The proposal's wording |
-| `utskottet` | The committee's recommendation |
-| `kammaren` | The chamber's decision, e.g. `Bifall` (approved) / `Avslag` (rejected) |
-| `behandlas_i` | Which report handled it |
+| `text` | The proposal's wording |
+| `number`, `ordinal` | Its number as published, and its 0-based position |
+| `committee_recommendation` | What the committee recommended |
+| `chamber_decision` | What the chamber decided, e.g. `Bifall` / `Avslag` |
+| `handled_in` | Which report handled it |
 
-Values are stored exactly as published and never translated. `decisions:` in
-`parliament.yaml` glosses them so prompts can explain them.
+Values stay exactly as published. `decisions:` in `parliament.yaml` glosses them, so
+prompts can explain them without the record being rewritten.
 
 ### `people` — the register of members
 
-`intressent_id` is the source's person id and the join key used everywhere.
-`valkrets` is the electoral district; its meaning varies by country — a single-member
-constituency in the UK, a multi-member district in Sweden — and nothing in the code
-assumes either.
+`person_id` is the source's identifier and the join key used throughout.
+`constituency` means different things by country — a single-member seat in the UK, a
+multi-member district in Sweden, a national list in the European Parliament — and
+nothing in the code assumes any of them.
 
-### `chunks`, `motion_chunks` — passages with embeddings
+### `speech_chunks`, `document_chunks` — passages with embeddings
 
 Text split into passages, each with a `vector(N)` embedding under an HNSW cosine
 index. `N` must match `embeddings.dimension` in `parliament.yaml`; the application
-checks this at startup because a mismatch otherwise fails deep inside pgvector.
+checks this at startup, because a mismatch otherwise fails deep inside pgvector with
+a message that never mentions configuration.
 
-### `debates` — aggregated debates
+### `debates`
 
-One row per debate, keyed `"{date}:{index}"`, holding a synthesised summary and the
-list of speeches it covers.
+One row per debate, keyed `"{date}:{index}"`, with a synthesised summary and the list
+of speeches it covers.
 
 ## Application tables
 
-Already country-neutral: `users` and `auth_tokens` (zero-knowledge auth),
-`chat_sessions` and `chat_snapshots` (encrypted chat storage and shared snapshots),
-`research_boards`, `research_threads`, `jobs`, `job_events` (deep research),
-`error_log` and `llm_events` (observability), and the `eval_*` tables.
+Country-neutral already: `users` and `auth_tokens` (zero-knowledge auth),
+`chat_sessions` and `chat_snapshots`, `research_boards`, `research_threads`, `jobs`,
+`job_events`, `error_log` and `llm_events`, and the `eval_*` tables.
 
 Two notes:
 
 `chat_snapshots.llm_messages` holds the full tool-call history so a forked snapshot
-resumes with the model's context. Stat cards replay the SQL stored there, which is
-why renaming a column is not a clean break — old SQL has to keep working.
+resumes with the model's context. Stat cards replay the SQL stored there, which is why
+the rename cannot be a clean break — SQL written against the old column names is still
+sitting in saved conversations.
 
-`session_type` is `'general'` or `'mp'`. The `'mp'` value means a chat conducted in
-the persona of a member; read it as "member", not as anything UK-specific.
+`session_type` is `'general'` or `'mp'`. Read `'mp'` as "member". The values were left
+alone deliberately: rewriting live rows and a CHECK constraint would buy nothing, and
+the display label comes from `parliament.yaml`.
 
 ## Full-text search
 
-Every search vector is built with the configuration named by `language.fts_config`,
-read at runtime from `current_setting('app.fts_config')` inside the triggers. Set it
-per database:
+Search vectors are built with the configuration named by `language.fts_config`, read
+at runtime inside the triggers via `current_setting('app.fts_config')`. Set it per
+database:
 
 ```sql
 ALTER DATABASE plenum SET app.fts_config = 'swedish';
 ```
 
-This only takes effect for new sessions, so restart the API after changing it.
+It only takes effect for new sessions, so restart the API after changing it.
+
+Note that `pg_dump` does **not** capture database-level settings. Restoring a dump
+onto a fresh server loses this one, and the symptom is searches quietly returning
+nothing rather than any error.
+
+## The rename
+
+The schema was originally Swedish, inherited from the Riksdag-only predecessor.
+[`_postgres/rename_map.py`](../_postgres/rename_map.py) records every old-to-new pair
+and generates both the migration and its rollback, so the two cannot drift apart.
+
+The migration is guarded by an existence check: a no-op on a database created from
+the current `schema.sql`, and the real thing on one created before the rename — so a
+single file serves both a fresh install and an existing deployment.
+`ALTER TABLE ... RENAME` is catalog-only in PostgreSQL, so no data moves and no index
+is rebuilt, regardless of table size.

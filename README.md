@@ -35,9 +35,11 @@ Adapting to another parliament means writing a config file, an ingest adapter, a
 set of prompts in your language — not editing the application. See
 [docs/PORTING.md](docs/PORTING.md).
 
-The database schema still uses Swedish column names (`anforandetext`, `intressent_id`,
-`yrkanden`). Renaming those to neutral English is planned and tracked; until then,
-[docs/SCHEMA.md](docs/SCHEMA.md) gives the translations.
+The database schema is country-neutral English: `speeches`, `documents`,
+`document_proposals`, `person_id`, `constituency`. Concepts that have no stable
+English equivalent — the Swedish *yrkande* or *riksmöte* — carry neutral column names
+while the country's own word lives in `parliament.yaml`. See
+[docs/SCHEMA.md](docs/SCHEMA.md).
 
 ## Requirements
 

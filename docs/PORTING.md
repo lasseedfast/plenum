@@ -89,9 +89,10 @@ through `/api/meta` and need no code change.
 
 The search engine, chat orchestration, tool-calling, citation and attribution
 checking, the deep-research agent, authentication and the encrypted chat store are
-all country-neutral. So is the database schema — although its column names are still
-Swedish (`anforandetext`, `intressent_id`, `yrkanden`). They are just names; nothing
-reads meaning from them. [docs/SCHEMA.md](SCHEMA.md) translates them.
+all country-neutral. So is the database schema: `speeches`, `documents`,
+`document_proposals`, `person_id`, `constituency`. Where a concept has no stable
+English equivalent, the column name is neutral and your own word for it goes in
+`vocabulary:`. See [docs/SCHEMA.md](SCHEMA.md).
 
 ## A caution about scope
 
