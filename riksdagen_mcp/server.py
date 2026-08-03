@@ -1,19 +1,19 @@
 from fastmcp import FastMCP
 from backend.services.llm_tools import (
-    arango_search,
+    search_speeches,
     database_query,
     fetch_debate,
-    fetch_documents,
+    fetch_speeches,
     vector_search,
     vector_search_debates,
 )
 
 mcp = FastMCP("riksdagen-tools")
 
-mcp.tool()(arango_search)
+mcp.tool()(search_speeches)
 mcp.tool()(database_query)
 mcp.tool()(fetch_debate)
-mcp.tool()(fetch_documents)
+mcp.tool()(fetch_speeches)
 mcp.tool()(vector_search)
 mcp.tool()(vector_search_debates)
 

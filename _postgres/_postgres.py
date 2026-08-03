@@ -144,6 +144,33 @@ class Postgres:
         finally:
             self._put_conn(conn)
 
+    def execute_readonly(self, query: str, params: Optional[tuple] = None) -> List[dict]:
+        """Run a query inside a read-only transaction.
+
+        For SQL the application did not write — currently the `database_query` tool,
+        where the statement is composed by a language model whose context includes
+        corpus text that anyone able to speak in parliament can influence.
+
+        `SET TRANSACTION READ ONLY` is enforced by PostgreSQL itself, so it holds
+        even if a statement slips past the caller's own checks: INSERT, UPDATE,
+        DELETE, DROP and friends all raise instead of executing. It is not a
+        substitute for connecting as a role that only has SELECT — see SECURITY.md —
+        but it is the part the application can guarantee on its own.
+        """
+        conn = self._get_conn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SET TRANSACTION READ ONLY")
+                cur.execute(query, params)
+                rows = [dict(row) for row in cur.fetchall()] if cur.description else []
+            conn.rollback()  # nothing to commit; ends the transaction cleanly
+            return rows
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._put_conn(conn)
+
     def execute_void(self, query: str, params: Optional[tuple] = None) -> None:
         """
         Execute a query that returns no rows (INSERT/UPDATE/DELETE).

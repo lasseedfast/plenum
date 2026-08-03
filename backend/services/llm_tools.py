@@ -2,17 +2,17 @@
 LLM tool implementations for the Riksdagen chat service.
 
 Surface exposed to the orchestrator LLM:
-  - arango_search         → PostgreSQL full-text + metadata filters (SearchService)
+  - search_speeches         → PostgreSQL full-text + metadata filters (SearchService)
   - vector_search         → unified chunk + summary semantic search, merged by speech_id
   - vector_search_debates → debate-level discovery (navigation, not citable)
   - fetch_debate          → drill into one debate, return its speeches with summaries
-  - fetch_documents       → full-text retrieval by id list
+  - fetch_speeches       → full-text retrieval by id list
   - read_documents_for    → focused sub-agent read: full texts in, short answer out
   - database_query        → direct SQL for aggregations
   - share_insight         → side-channel to surface findings to the user mid-loop
-  - search_motions        → full-text + metadata search over motioner (MotionSearchService)
-  - vector_search_motions → semantic chunk search over motioner
-  - fetch_motion          → one motion: metadata, authors, yrkanden + outcomes, text
+  - search_documents        → full-text + metadata search over motioner (MotionSearchService)
+  - vector_search_documents → semantic chunk search over motioner
+  - fetch_document          → one motion: metadata, authors, yrkanden + outcomes, text
 """
 
 import json
@@ -27,7 +27,41 @@ from packages.colorprinter import *
 from pgvector.psycopg2 import register_vector
 from pydantic import BaseModel, Field
 
+import re as _re_guard
+
 from packages.llm import LLM, get_tools, register_tool
+
+# Statements the model is allowed to run. Anything else is refused before it
+# reaches the database.
+#
+# This is defence in depth, not the defence: pg.execute_readonly() opens a
+# READ ONLY transaction, so PostgreSQL rejects writes even if a statement gets
+# past this check. The check exists to give the model a clear, correctable error
+# instead of a database exception, and to catch multi-statement payloads.
+_ALLOWED_SQL = _re_guard.compile(r"^\s*(?:WITH|SELECT)\b", _re_guard.IGNORECASE)
+
+
+def _reject_unsafe_sql(sql: str) -> str | None:
+    """Return an error message if this SQL must not run, else None.
+
+    Corpus text reaches the model's context, and in a parliament anyone able to
+    speak can get text into the corpus — so treat generated SQL as untrusted.
+    """
+    stripped = sql.strip().rstrip(";").strip()
+    if not _ALLOWED_SQL.match(stripped):
+        first = (stripped.split() or ["(empty)"])[0]
+        return (
+            f"REFUSED: only SELECT and WITH queries may run, got {first!r}. "
+            f"This tool is read-only."
+        )
+    # A second statement is how a write gets smuggled past a leading SELECT.
+    if ";" in stripped:
+        return (
+            "REFUSED: multiple statements are not allowed. "
+            "Send one SELECT (a WITH clause may precede it)."
+        )
+    return None
+
 from backend.services.search import MotionSearchService, SearchService
 from postgres_client import pg
 from prompts_loader import load_prompt
@@ -99,7 +133,7 @@ class HitsResponse(BaseModel):
 
 
 class SearchHitsResult(BaseModel):
-    """Returned by arango_search. Wraps HitsResponse with search metadata."""
+    """Returned by search_speeches. Wraps HitsResponse with search metadata."""
     type: str = "hits"
     response: HitsResponse
     stats: Dict[str, Any] = Field(default_factory=dict)
@@ -154,7 +188,7 @@ def database_query(sql: str) -> str:
     
     Use this tool for structured queries on metadata: party breakdowns, aggregations,
     speaker statistics, and comparisons. Not for fuzzy/semantic search (use vector_search
-    or arango_search instead).
+    or search_speeches instead).
     
     ✅ WHEN TO USE:
     - Counting or ranking: "how many speeches per party?", "top 10 speakers by year?"
@@ -163,8 +197,8 @@ def database_query(sql: str) -> str:
     
     ❌ WHEN NOT TO USE:
     - Semantic/conceptual search → use vector_search
-    - Exact phrase or keyword search → use arango_search
-    - Fetching full documents → use fetch_documents
+    - Exact phrase or keyword search → use search_speeches
+    - Fetching full documents → use fetch_speeches
     
     DATABASE SCHEMA:
     
@@ -324,8 +358,13 @@ def database_query(sql: str) -> str:
         print_red(f"[database_query] Blocked LIKE on text column: {sql[:120]}")
         return msg
 
+    refusal = _reject_unsafe_sql(sql)
+    if refusal:
+        print_red(f"[database_query] {refusal} | {sql[:120]}")
+        return refusal
+
     try:
-        rows = pg.execute(sql)
+        rows = pg.execute_readonly(sql)
     except Exception as e:
         print_red(f"[database_query] Error: {e}")
         return f"ERROR executing SQL: {e}"
@@ -344,7 +383,7 @@ def database_query(sql: str) -> str:
 
     # Enrich with person_id when rows have speaker_name but no person_id.
     # This lets the shadow communicator attach speaker portraits to stats insights,
-    # and gives the main LLM the IDs for future arango_search(person_ids=...) calls.
+    # and gives the main LLM the IDs for future search_speeches(person_ids=...) calls.
     rows_list = rows if isinstance(rows, list) else ([rows] if isinstance(rows, dict) else [])
     if (
         rows_list
@@ -407,9 +446,9 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
     - You want a blended view of both whole-talk overview and specific passages.
 
     When NOT to use:
-    - Exact word/phrase matching → use arango_search
+    - Exact word/phrase matching → use search_speeches
     - Counts, aggregations, statistics → use database_query
-    - You already know the speaker/party/year filter → use arango_search with filters
+    - You already know the speaker/party/year filter → use search_speeches with filters
 
     Args:
         query: Natural-language description of the topic.
@@ -563,7 +602,7 @@ def vector_search_debates(query: str, limit: int = 5) -> HitsResponse:
     - You want a quick map of which debates touched a topic before drilling in.
 
     When NOT to use:
-    - You want individual speech hits → use vector_search or arango_search
+    - You want individual speech hits → use vector_search or search_speeches
     - You already have a debate_id → call fetch_debate directly
     - Counts/aggregations → use database_query
 
@@ -743,7 +782,7 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
                 f"Debate has {len(talk_rows)} speeches (combined summaries "
                 f"{total_summary_chars} chars). Returned the {len(trimmed_rows)} "
                 f"most relevant to query '{query}'; {omitted} speeches omitted. "
-                f"Use fetch_documents with specific ids for full texts."
+                f"Use fetch_speeches with specific ids for full texts."
             )
         else:
             reason = (
@@ -755,7 +794,7 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
                 f"Debate has {len(talk_rows)} speeches (combined summaries "
                 f"{total_summary_chars} chars). Returned the first "
                 f"{len(trimmed_rows)} summarised speeches ({reason}); "
-                f"{omitted} speeches omitted. Use fetch_documents for full texts."
+                f"{omitted} speeches omitted. Use fetch_speeches for full texts."
             )
 
     # Build a compact dict for the LLM; register the speeches as provenance sources.
@@ -806,20 +845,20 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# fetch_documents
+# fetch_speeches
 # ─────────────────────────────────────────────────────────────────────────────
 
 @register_tool()
-def fetch_documents(_ids: list[str], collection: str = "", fields: list = []) -> list:
+def fetch_speeches(_ids: list[str], collection: str = "", fields: list = []) -> list:
     """
     Fetch full documents by their id from the speeches table.
 
     Use this tool when:
-    - arango_search or vector_search returned _ids and you need the full speech text.
+    - search_speeches or vector_search returned _ids and you need the full speech text.
     - You want specific fields for a known set of documents.
 
     When NOT to use:
-    - To search → use arango_search or vector_search
+    - To search → use search_speeches or vector_search
     - To count/aggregate → use database_query
 
     Args:
@@ -944,14 +983,14 @@ def read_documents_for(question: str, _ids: list[str]) -> str:
     - A snippet or summary is too sparse and you would otherwise fetch full text.
 
     When NOT to use:
-    - To search → use arango_search or vector_search.
-    - When the user explicitly asks to see the complete raw text → fetch_documents.
+    - To search → use search_speeches or vector_search.
+    - When the user explicitly asks to see the complete raw text → fetch_speeches.
 
     Args:
         question: One concrete question in Swedish, e.g.
             "Vilka argument anför talarna mot höjd bensinskatt?"
         _ids: 1-6 document IDs from earlier search results
-            (e.g. ["H40911", "speeches/H40912"]). Motion ids from search_motions
+            (e.g. ["H40911", "speeches/H40912"]). Motion ids from search_documents
             (e.g. "documents/HD02846") work too — the full motion text is read.
 
     Returns:
@@ -1133,7 +1172,7 @@ def _normalize_arango_search_args(
 
 
 @register_tool()
-def arango_search(
+def search_speeches(
     query: str,
     parties: Optional[list[str]] = None,
     people: Optional[list[str]] = None,
@@ -1316,7 +1355,7 @@ def arango_search(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @register_tool()
-def search_motions(
+def search_documents(
     query: str,
     parties: Optional[list[str]] = None,
     people: Optional[list[str]] = None,
@@ -1329,10 +1368,10 @@ def search_motions(
 ) -> "SearchHitsResult":
     """
     Full-text and metadata search over MOTIONER (written proposals submitted by MPs),
-    as opposed to arango_search which searches chamber SPEECHES (anföranden).
+    as opposed to search_speeches which searches chamber SPEECHES (anföranden).
 
     Speeches (anföranden) are the PRIMARY source — search them first with
-    arango_search/vector_search. Use this tool as a COMPLEMENT: to deepen research
+    search_speeches/vector_search. Use this tool as a COMPLEMENT: to deepen research
     with the concrete proposals (yrkanden) behind positions found in speeches, to
     add committee/chamber outcomes, or when the user explicitly asks about motioner
     ("vad har X föreslagit/motionerat om?", "vilka motioner finns om Y?").
@@ -1354,8 +1393,8 @@ def search_motions(
         committee (committee), session_label (riksmöte) and num_proposals. Cite with [src:DOK_ID].
 
     When NOT to use:
-      - Chamber speeches/debates → arango_search or vector_search
-      - Fuzzy/semantic similarity over documents → vector_search_motions
+      - Chamber speeches/debates → search_speeches or vector_search
+      - Fuzzy/semantic similarity over documents → vector_search_documents
       - Counts/aggregations → database_query (documents table)
     """
     if person_ids:
@@ -1401,7 +1440,7 @@ def search_motions(
             except json.JSONDecodeError:
                 focus_id_list = [focus_ids]
 
-    print_yellow(f"[Tools] search_motions → query='{query}' limit={args['limit']}")
+    print_yellow(f"[Tools] search_documents → query='{query}' limit={args['limit']}")
 
     search_service = MotionSearchService()
     results, stats, limit_reached = search_service.search(
@@ -1419,7 +1458,7 @@ def search_motions(
         return_snippets=False,
     )
 
-    # Same size guard as arango_search: fall back to snippets when the combined
+    # Same size guard as search_speeches: fall back to snippets when the combined
     # full texts would blow up the orchestrator context.
     total_text_chars = sum(len(item.get("text") or "") for item in results if isinstance(item, dict))
     auto_snippet_mode = total_text_chars > 20_000
@@ -1467,7 +1506,7 @@ def search_motions(
             f"NOTE: The full texts of these {len(hits)} results total {total_text_chars:,} characters "
             f"(exceeds 20 000), so only snippets are shown above. "
             "You can either:\n"
-            "  1. Pick specific motion IDs and call fetch_motion(doc_id) for the full text, or\n"
+            "  1. Pick specific motion IDs and call fetch_document(doc_id) for the full text, or\n"
             "  2. Repeat the search with a lower `limit` to reduce the result set."
         )
         output = output + "\n\n---\n\n" + note
@@ -1475,11 +1514,11 @@ def search_motions(
 
 
 @register_tool()
-def vector_search_motions(query: str, limit: int = 10) -> HitsResponse:
+def vector_search_documents(query: str, limit: int = 10) -> HitsResponse:
     """
     Semantic/conceptual search over MOTIONER (written proposals from MPs), using
-    chunk embeddings of the motion texts. Complements search_motions the same way
-    vector_search complements arango_search.
+    chunk embeddings of the motion texts. Complements search_documents the same way
+    vector_search complements search_speeches.
 
     Speeches (anföranden) are the PRIMARY source — search them first. Use this
     tool as a complement when:
@@ -1489,7 +1528,7 @@ def vector_search_motions(query: str, limit: int = 10) -> HitsResponse:
     - You want documents similar in meaning to a phrase or idea.
 
     When NOT to use:
-    - Exact word/phrase matching in documents → search_motions
+    - Exact word/phrase matching in documents → search_documents
     - Chamber speeches → vector_search
     - Counts/aggregations → database_query
 
@@ -1504,7 +1543,7 @@ def vector_search_motions(query: str, limit: int = 10) -> HitsResponse:
         says which ("yrkande" or "text"). Hit ids look like "documents/HD02846";
         cite with [src:DOK_ID].
     """
-    print_yellow(f"[Tools] vector_search_motions → query='{query}' (top_k={limit})")
+    print_yellow(f"[Tools] vector_search_documents → query='{query}' (top_k={limit})")
 
     query_vec = pg.make_embeddings([query])[0]
 
@@ -1634,13 +1673,13 @@ _YRKANDE_KEYS = (
 
 
 @register_tool()
-def fetch_motion(doc_id: str) -> dict:
+def fetch_document(doc_id: str) -> dict:
     """
     Fetch one motion by its doc_id: metadata, all authors, all yrkanden (proposals)
     with committee and chamber outcomes, and the full text.
 
-    Typical flow: search_motions / vector_search_motions → pick a hit →
-    fetch_motion(doc_id) to read the yrkanden and full text.
+    Typical flow: search_documents / vector_search_documents → pick a hit →
+    fetch_document(doc_id) to read the yrkanden and full text.
 
     Args:
         doc_id: Motion id, e.g. "HD02846" or "documents/HD02846".
@@ -1657,7 +1696,7 @@ def fetch_motion(doc_id: str) -> dict:
           note (optional): present when the motion only exists as a scanned PDF.
     """
     bare_id = doc_id.split("/", 1)[1] if "/" in doc_id else doc_id
-    print_yellow(f"[Tools] fetch_motion → doc_id='{bare_id}'")
+    print_yellow(f"[Tools] fetch_document → doc_id='{bare_id}'")
 
     rows = pg.execute(
         """
@@ -1768,7 +1807,7 @@ def share_insight(
             portraits can be highlighted visually.
         hit_ids (list[str]): Optional. Talk IDs to surface as a search card (backend fetches
             metadata). Pass the talk IDs (e.g. ["H40911", "H40912"]) you saw in a previous
-            arango_search or vector_search result. The backend fetches speaker/party/date/
+            search_speeches or vector_search result. The backend fetches speaker/party/date/
             summary for each ID automatically — you do NOT need to copy the data yourself.
         sql (str): Optional. SQL query to re-execute for a stats card (preferred for surfacing
             stats tables). Re-pass the same SQL query you used in database_query (or a simplified
@@ -1853,8 +1892,13 @@ def share_insight(
 
     # Resolve sql → rows by re-executing the query
     if sql and not rows:
+        # Replayed from a saved snapshot, so it is no more trusted than fresh output.
+        refusal = _reject_unsafe_sql(sql)
+        if refusal:
+            print_red(f"[share_insight] {refusal}")
+            return refusal
         try:
-            rows = pg.execute(sql)
+            rows = pg.execute_readonly(sql)
         except Exception as e:
             print_red(f"[share_insight] Failed to execute sql: {e}")
             rows = [{"error": str(e)}]
@@ -1912,7 +1956,7 @@ def share_insight(
 def lookup_source(source_ids: list[str]) -> str:
     """Återhämta lagrad grundtext för en eller flera tidigare registrerade källor.
 
-    Sökverktyg (`arango_search`, `vector_search`, `fetch_debate`, `fetch_documents`)
+    Sökverktyg (`search_speeches`, `vector_search`, `fetch_debate`, `fetch_speeches`)
     komprimeras automatiskt i meddelandehistoriken: bara `[src:ID]` plus en kort
     rubrikrad sparas. När du behöver det faktiska textinnehållet (t.ex. för att
     citera ordagrant eller verifiera ett påstående) — anropa det här verktyget

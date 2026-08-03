@@ -70,17 +70,17 @@ def _is_duplicate_insight(candidate: str, sent: List[str], threshold: float = 0.
 # Per-tool nudges appended to the cached-result message when the model repeats
 # an identical call, steering it toward a genuinely different next step.
 _DEDUP_HINTS = {
-    "arango_search": "Vary the keywords/filters, or try vector_search for semantic matching, or database_query for counts.",
-    "vector_search": "Rephrase the query as a content statement, or use arango_search with metadata filters.",
+    "search_speeches": "Vary the keywords/filters, or try vector_search for semantic matching, or database_query for counts.",
+    "vector_search": "Rephrase the query as a content statement, or use search_speeches with metadata filters.",
     "vector_search_debates": "Pick a debate from the previous result and call fetch_debate, or vary the query.",
     "fetch_debate": "You already have this debate's speeches — read specific speeches with read_documents_for instead.",
-    "fetch_documents": "You already have these documents. Use read_documents_for with a focused question if you need their substance.",
+    "fetch_speeches": "You already have these documents. Use read_documents_for with a focused question if you need their substance.",
     "read_documents_for": "Ask a DIFFERENT question or read different documents.",
     "database_query": "The result will not change — use the rows you already received.",
     "lookup_source": "You already recalled these sources; the text is in your history.",
-    "search_motions": "Vary the keywords/filters, or try vector_search_motions for semantic matching, or database_query for counts.",
-    "vector_search_motions": "Rephrase the query as a content statement, or use search_motions with metadata filters.",
-    "fetch_motion": "You already have this motion — use read_documents_for with a focused question if you need its substance.",
+    "search_documents": "Vary the keywords/filters, or try vector_search_documents for semantic matching, or database_query for counts.",
+    "vector_search_documents": "Rephrase the query as a content statement, or use search_documents with metadata filters.",
+    "fetch_document": "You already have this motion — use read_documents_for with a focused question if you need its substance.",
 }
 
 
@@ -855,16 +855,16 @@ class ChatService:
                 # research sessions. Fires only for data tools that returned
                 # something useful, mirroring the orchestrator-loop behaviour.
                 _DATA_TOOLS = {
-                    "arango_search",
+                    "search_speeches",
                     "vector_search",
                     "vector_search_debates",
                     "fetch_debate",
                     "database_query",
-                    "fetch_documents",
+                    "fetch_speeches",
                     "read_documents_for",
-                    "search_motions",
-                    "vector_search_motions",
-                    "fetch_motion",
+                    "search_documents",
+                    "vector_search_documents",
+                    "fetch_document",
                 }
                 result_is_useful = (
                     tool_name in _DATA_TOOLS
@@ -1229,7 +1229,7 @@ class ChatService:
             if not speech_id:
                 continue
             # Body = grounding text the LLM should be able to recall via
-            # lookup_source. Prefer full text (fetch_documents), fall back to
+            # lookup_source. Prefer full text (fetch_speeches), fall back to
             # snippet (vector_search neighbours, summary, etc.). The registry
             # caps it at BODY_CAP_CHARS.
             body_text = hit.text or hit.snippet or ""
@@ -1361,7 +1361,7 @@ class ChatService:
                         "Du har tidigare delat sökresultat med användaren. "
                         "Listan `focus_ids` innehåller deras dokument-id:n:\n"
                         f"{active_focus_ids}\n"
-                        "Om du vill begränsa en ny arango_search till samma träffar anger du argumentet "
+                        "Om du vill begränsa en ny search_speeches till samma träffar anger du argumentet "
                         "`focus_ids=focus_ids`."
                     ),
                 }
@@ -1626,14 +1626,14 @@ class ChatService:
                                     structured, registry, tool_name
                                 )
                         # Replace tool_result with structured data for search tools.
-                        # fetch_documents returns a plain list and fetch_debate returns
+                        # fetch_speeches returns a plain list and fetch_debate returns
                         # a dict with debate-level metadata; for both we keep the
                         # original return value so the eviction step (else branch)
                         # can read it alongside the structured HitsResponse.
                         # read_documents_for returns the distilled answer itself —
                         # replacing it with the structured hits would destroy it.
                         if structured is not None and tool_name not in (
-                            "fetch_documents", "fetch_debate", "read_documents_for"
+                            "fetch_speeches", "fetch_debate", "read_documents_for"
                         ):
                             tool_result = structured
 
@@ -1717,7 +1717,7 @@ class ChatService:
                         )
 
                     else:
-                        # fetch_documents and fetch_debate both produce a structured
+                        # fetch_speeches and fetch_debate both produce a structured
                         # HitsResponse on the side; we evict the bodies and keep a
                         # one-line stub. fetch_debate also has debate-level metadata
                         # (summary, note, num_talks) worth preserving.
@@ -1751,7 +1751,7 @@ class ChatService:
 
                     # Route long results through the fast model for summarization.
                     # HitsResponse results are already per-document summarised above.
-                    # Plain strings (database_query, fetch_documents) may still be large.
+                    # Plain strings (database_query, fetch_speeches) may still be large.
                     if len(tool_result_string) > SUMMARIZE_THRESHOLD:
                         tool_result_string = self._summarize_tool_result(
                             tool_name, tool_result_string, user_question, fast_llm=_fast
@@ -1796,7 +1796,7 @@ class ChatService:
                         })
 
                     # ── LLM misbehaviour detection ────────────────────────────────────
-                    _SEARCH_TOOLS = {"arango_search", "vector_search", "vector_search_debates", "search_motions", "vector_search_motions"}
+                    _SEARCH_TOOLS = {"search_speeches", "vector_search", "vector_search_debates", "search_documents", "vector_search_documents"}
                     _args_json = json.dumps(tool_args, sort_keys=True, default=str)
                     _result_empty = not tool_result_string.strip() or tool_result_string.startswith("ERROR")
                     _model_name = getattr(_smart, "model", None)
@@ -1832,16 +1832,16 @@ class ChatService:
                         )
                     # After data-returning tools, check if the shadow communicator should share an insight.
                     data_tools = {
-                        "arango_search",
+                        "search_speeches",
                         "vector_search",
                         "vector_search_debates",
                         "fetch_debate",
                         "database_query",
-                        "fetch_documents",
+                        "fetch_speeches",
                         "read_documents_for",
-                        "search_motions",
-                        "vector_search_motions",
-                        "fetch_motion",
+                        "search_documents",
+                        "vector_search_documents",
+                        "fetch_document",
                     }
                     result_is_useful = (
                         tool_name in data_tools

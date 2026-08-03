@@ -14,14 +14,14 @@ export const INITIAL_ASSISTANT_MESSAGE = "Hej! Ställ en fråga om protokollen s
 const CHAT_REQUEST_TIMEOUT_MS = 360_000; // Allow up to six minutes for long-running tool calls.
 
 const TOOL_HINTS: Record<string, string> = {
-    arango_search: "Söker i anföranden med fulltextsökning…",
+    search_speeches: "Söker i anföranden med fulltextsökning…",
     vector_search: "Gör semantisk sökning i databasen…",
     vector_search_debates: "Söker efter relevanta debatter…",
     fetch_debate: "Hämtar debattens tal…",
     aql_query: "Kör strukturerad databasfråga…",
     database_query: "Kör strukturerad databasfråga…",
     search_documents: "Analyserar och söker i dokumenten…",
-    fetch_documents: "Hämtar fullständiga dokument…",
+    fetch_speeches: "Hämtar fullständiga dokument…",
 };
 
 type Props = {

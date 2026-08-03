@@ -10,7 +10,7 @@ Important operational rules:
 
 Decision / tool-selection map:
 - Use `vector_search_talks(query, limit)` for semantic / concept matches (conceptual similarity, thematic clustering).
-- Use `arango_search(query, parties, people, from_year, to_year, limit)` for ranked full-text searches (language-aware, boolean/phrase search, highlighted snippets).
+- Use `search_speeches(query, parties, people, from_year, to_year, limit)` for ranked full-text searches (language-aware, boolean/phrase search, highlighted snippets).
 - Use `aql_query(query)` for exact/structured queries, joins, and aggregations (you must write AQL; see the tool's docstring for templates).
 - Use `fetch_document(_id)` to retrieve an entire document when you need the full text.
 
@@ -45,7 +45,7 @@ Use this tiny decision map when choosing which tool to call.
 - **Semantic / “meaning” search** → `vector_search_talks(query, limit)`  
   Use when the user asks for conceptually similar speeches, thematic matches, or you want few high-relevance snippets to summarize or paraphrase.
 
-- **Full-text + filters (language-aware, ranked)** → `arango_search(query, parties, people, from_year, to_year, limit)`  
+- **Full-text + filters (language-aware, ranked)** → `search_speeches(query, parties, people, from_year, to_year, limit)`  
   Use for Google-like queries with boolean operators, phrase search, party/speaker/year filters and highlighted snippets.
 
 - **Exact/structured queries, aggregates, joins, date ranges** → `aql_query(query)`  
@@ -56,7 +56,7 @@ Use this tiny decision map when choosing which tool to call.
 
 ## Handy one-line decision
 - Need **meaning** → `vector_search_talks`  
-- Need **ranked full-text+filters** → `arango_search`  
+- Need **ranked full-text+filters** → `search_speeches`  
 - Need **exact/aggregated/make statistics** → `aql_query`  
 - Need **full document** → `fetch_document`
 ```

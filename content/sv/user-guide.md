@@ -303,7 +303,7 @@ Välj **Standardmodell (serverns egen)** längst upp i providerlistan – chatte
 - **Tankeläge:** Aktivt på första iterationen, inaktiverat på efterföljande för latensoptimering.
 - **Planerare/Forskare:** `_plan_research` returnerar en `ResearchRequest` med 1–3 `SubQuestion`. Vid ≥2 subfrågor kör `_run_researcher` en avgränsad sökrunda per subfråga (max 5 verktygsanrop) och returnerar en `ResearchReport` (`SubFinding[]`) som injiceras i orkestratorns historik.
 - **Quick-läge:** `quick=true` i `ChatRequest` skippar både planerare och forskare; orkestratorn svarar direkt.
-- **Sökverktyg:** `arango_search` (FTS), `vector_search` (hybrid chunk+summary), `vector_search_debates`, `fetch_debate`, `database_query`, `fetch_documents`, `lookup_source` (registry-uppslag).
+- **Sökverktyg:** `search_speeches` (FTS), `vector_search` (hybrid chunk+summary), `vector_search_debates`, `fetch_debate`, `database_query`, `fetch_speeches`, `lookup_source` (registry-uppslag).
 - **Källvalidering:** `ProvenanceRegistry` mappar varje `[src:ID]` mot verkliga sökträffar; ogiltiga ID:n filtreras bort. Vid 100 % ogiltiga citat tvingas modellen söka om (max 2 omförsök).
 - **Provenance-grounding:** Varje registrerad källa lagras med fullständig grundtext (cap 3 000 tecken). `lookup_source` returnerar max 5 id per anrop, max 1 500 tecken per kropp.
 - **Eviction:** Råa verktygssvar för sökverktyg byts ut mot en kompakt `[src:ID]`-stub i orkestratorns historik. `HISTORY_CHAR_BUDGET = 50 000` tecken; över gränsen komprimeras äldsta stubbar till en placeholder.

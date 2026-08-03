@@ -100,20 +100,20 @@ Om du inte har tillräckligt med material: anropa nästa verktyg direkt.
 
 **Steg 1 — Sök {first_name}s egna anföranden (ALLTID första steget):**
 ```
-arango_search(query="<ämne>", person_ids=["{person_id}"], return_snippets=True, limit=10)
+search_speeches(query="<ämne>", person_ids=["{person_id}"], return_snippets=True, limit=10)
 ```
 `return_snippets=True` ger bara korta utdrag — bra för att se om det finns träffar.
-**Om du hittar relevanta träffar MÅSTE du sedan hämta full text med fetch_documents.**
+**Om du hittar relevanta träffar MÅSTE du sedan hämta full text med fetch_speeches.**
 
 **Steg 2 — Hämta full text för de mest relevanta träffarna:**
 ```
-fetch_documents(_ids=["<_id från steg 1>", ...])
+fetch_speeches(_ids=["<_id från steg 1>", ...])
 ```
 Utan full text kan du inte citera korrekt. Hoppa inte över detta steg.
 
 **Steg 3 — Om < 3 relevanta träffar på {first_name}:** sök automatiskt partiets linje (ingen fråga till användaren):
 ```
-arango_search(query="<ämne>", parties=["{party}"], limit=5)
+search_speeches(query="<ämne>", parties=["{party}"], limit=5)
 ```
 Notera: utan `return_snippets=True` får du full text direkt — du behöver inte hämta separat.
 
@@ -150,7 +150,7 @@ Inkludera inline-källhänvisningar i formatet [src:ID] direkt efter påstående
 
 
 def _collect_sources_from_payload(payload: Dict[str, Any], collected_sources: List[ChatSource]) -> None:
-    """Extract sources from an arango_search payload dict and append to collected_sources."""
+    """Extract sources from an search_speeches payload dict and append to collected_sources."""
     results = payload.get("results", [])
     for item in results:
         if not isinstance(item, dict):
@@ -298,8 +298,8 @@ class MpChatService:
             search_reminder = ""
         else:
             search_reminder = (
-                f"\n\n**OBLIGATORISKT:** Anropa arango_search med person_ids=[\"{self.person_id}\"] "
-                f"INNAN du svarar. Hämta sedan full text med fetch_documents om du bara fick snippets. "
+                f"\n\n**OBLIGATORISKT:** Anropa search_speeches med person_ids=[\"{self.person_id}\"] "
+                f"INNAN du svarar. Hämta sedan full text med fetch_speeches om du bara fick snippets. "
                 f"Alla sakpåståenden MÅSTE grunda sig i faktiska anföranden du hittat via sök."
             )
 
@@ -477,8 +477,8 @@ class MpChatService:
                                 tool_name, tool_args, tool_result, collected_sources, collected_persons
                             )
 
-                    # ── Guard: arango_search without person/party filter ────────
-                    if tool_name == "arango_search" and isinstance(tool_args, dict):
+                    # ── Guard: search_speeches without person/party filter ────────
+                    if tool_name == "search_speeches" and isinstance(tool_args, dict):
                         has_person = bool(
                             tool_args.get("person_ids") or tool_args.get("people")
                         )
@@ -493,7 +493,7 @@ class MpChatService:
                             )
 
                     # ── Guard: snippets only → must fetch full text before citing ──
-                    if tool_name == "arango_search" and isinstance(tool_args, dict) and tool_args.get("return_snippets"):
+                    if tool_name == "search_speeches" and isinstance(tool_args, dict) and tool_args.get("return_snippets"):
                         result_ids = []
                         if isinstance(tool_result, dict):
                             results_list = tool_result.get("results") or tool_result.get("payload", {}).get("results", [])
@@ -505,7 +505,7 @@ class MpChatService:
                             tool_result_string += (
                                 f"\n\n[SYSTEMINFO: Du sökte med return_snippets=True och fick bara utdrag. "
                                 f"Om du vill basera svaret på dessa anföranden MÅSTE du hämta full text först: "
-                                f"fetch_documents(_ids={result_ids[:5]})]"
+                                f"fetch_speeches(_ids={result_ids[:5]})]"
                             )
 
                     if len(tool_result_string) > SUMMARIZE_THRESHOLD:
@@ -526,7 +526,7 @@ class MpChatService:
                         "\n\n**KRITISKT:** Antingen anropar du nästa verktyg NU, eller ger du ditt slutsvar. "
                         "Du får INTE fråga användaren om du ska söka mer — bara sök. "
                         "Du får INTE beskriva vad du planerar att göra. "
-                        "Om materialet är otillräckligt: anropa arango_search med parties eller vector_search direkt. "
+                        "Om materialet är otillräckligt: anropa search_speeches med parties eller vector_search direkt. "
                         "I slutsvaret: svara som {name} i första person och inkludera [src:ID]-citat direkt efter varje påstående. "
                         "ID:n hittar du i verktygsresultaten ovan (t.ex. [src:H40911]). "
                         "Avsluta INTE med en separat 'Källor'-sektion."
@@ -581,26 +581,26 @@ class MpChatService:
         and side-effect: append sources to collected_sources and persons to
         collected_persons when applicable.
 
-        arango_search has three possible return shapes:
+        search_speeches has three possible return shapes:
           1. Normal call (no flags):  returns payload dict directly
              { "results": [...], "stats": {...}, "limit_reached": bool, ... }
           2. surface_results=True:    {"type": "search_results", "payload": {...}, "surface_only": True}
           3. results_to_user=True:    {"type": "search_results", "payload": {...}}
         """
         if not isinstance(tool_result, dict):
-            # str from vector_search, list from fetch_documents, etc.
+            # str from vector_search, list from fetch_speeches, etc.
             return str(tool_result)
 
         t = tool_result.get("type")
 
-        # ── arango_search: wrapped return (surface_results / results_to_user) ──
+        # ── search_speeches: wrapped return (surface_results / results_to_user) ──
         if t == "search_results":
             payload = tool_result.get("payload", {})
             _collect_sources_from_payload(payload, collected_sources)
             _collect_persons_from_results(payload.get("results", []), collected_persons)
             return json.dumps(payload, ensure_ascii=False)
 
-        # ── arango_search: direct payload (normal call, no special flags) ──
+        # ── search_speeches: direct payload (normal call, no special flags) ──
         if "results" in tool_result and isinstance(tool_result.get("results"), list):
             _collect_sources_from_payload(tool_result, collected_sources)
             _collect_persons_from_results(tool_result.get("results", []), collected_persons)

@@ -34,9 +34,9 @@ from prompts_loader import load_prompt
 log = logging.getLogger("riksdagen.research.trip")
 
 # Tools a trip may use. share_insight/lookup_source are chat-turn plumbing;
-# fetch_documents dumps raw text — trips use read_documents_for instead.
+# fetch_speeches dumps raw text — trips use read_documents_for instead.
 RESEARCH_TOOLS = [
-    "arango_search",
+    "search_speeches",
     "vector_search",
     "vector_search_debates",
     "fetch_debate",

@@ -5,20 +5,29 @@
 Open a private issue on the repository, or contact the maintainer directly rather
 than filing a public issue. Please allow reasonable time for a fix before disclosing.
 
-## Known issue: `database_query` executes model-authored SQL
+## Model-authored SQL
 
-The `database_query` tool lets the model write and run SQL so it can answer
-aggregate questions ("how many speeches per party mentioned X?"). The SQL is passed
-to the database as written. There is currently **no `SELECT`-only enforcement in the
-application**.
+The `database_query` tool lets the model write and run SQL so it can answer aggregate
+questions ("how many speeches per party mentioned X?"). This matters more than it
+might appear, because the corpus reaches the model's context: speech and document
+text is fetched and shown to it, so anyone who can get text into the parliament's
+record — which, in a parliament, is the point — can attempt a prompt injection.
 
-This matters more than it might appear, because the corpus itself reaches the model's
-context. Speech and document text is fetched and shown to the model, so anyone who
-can get text into the parliament's record — which, in a parliament, is the point —
-can attempt a prompt injection.
+Two layers apply, and the second is the one that counts:
 
-**Run plenum against a database role that only has `SELECT`.** The application does
-not do this for you:
+1. Statements are refused unless they begin with `SELECT` or `WITH`, and multiple
+   statements are rejected outright — that is how a write gets smuggled in behind a
+   leading `SELECT`.
+2. The query runs inside a `SET TRANSACTION READ ONLY` transaction, so PostgreSQL
+   itself rejects `INSERT`, `UPDATE`, `DELETE` and DDL regardless of what the first
+   check concluded.
+
+The same applies to `share_insight`, which re-executes SQL stored in saved
+conversations — replayed SQL is no more trustworthy than freshly generated SQL.
+
+**Still run plenum against a database role that only has `SELECT`.** Defence in depth
+means not relying on any single layer, and the ingest pipeline needs write access
+that the web application never should have:
 
 ```sql
 CREATE ROLE plenum_ro LOGIN PASSWORD '...';
@@ -29,9 +38,6 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO plenum_ro;
 ```
 
 The ingest pipeline needs write access and should use a separate role.
-
-Enforcing this in the application — a read-only transaction plus a statement-type
-check on the tool path — is tracked and intended.
 
 ## API keys
 

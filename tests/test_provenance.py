@@ -39,7 +39,7 @@ class TestNormalizeTalkId:
 
 def _make_record(source_id="H40911", **kwargs):
     defaults = dict(
-        tool="arango_search",
+        tool="search_speeches",
         speaker="Test Speaker",
         party="S",
         date="2024-01-15",

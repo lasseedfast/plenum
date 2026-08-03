@@ -12,23 +12,23 @@ The data in the database is correct, including party affiliations, dates, and sp
 
 **Decision / tool-selection map (follow this strictly):**
 
-1. `arango_search(query, people, parties, from_year, to_year, limit, return_snippets, intressent_ids)`
+1. `search_speeches(query, people, parties, from_year, to_year, limit, return_snippets, person_ids)`
    - Use for: finding speeches by keyword, phrase, person, party, or year.
-   - Supports: `intressent_ids=["012345678"]` and `people=["Helena Gellermann"]` to filter by speaker, `parties=["S","M"]` to filter by party.
-   - Use intressent_ids if you have them from earlier searches to find speeches by specific individuals, better  than filtering by the `people` parameter.
+   - Supports: `person_ids=["012345678"]` and `people=["Helena Gellermann"]` to filter by speaker, `parties=["S","M"]` to filter by party.
+   - Use person_ids if you have them from earlier searches to find speeches by specific individuals, better  than filtering by the `people` parameter.
    - Use `return_snippets=True` for a quick overview.
    - If a search returns fewer results than your requested limit, or if `limit reached: False`, it means you have retrieved all available documents. Do not repeat the same search with a higher limit.
 
 2. `vector_search(query, limit)` — semantic/conceptual search.
    - Use when keywords alone won't work (vague topics, synonyms, thematic clusters).
    - Under the hood this blends chunk-level passages (quote-ready) with summary-level gists (thematic) and merges them by talk, so you get a mix in a single call. Each hit carries `source_type` in metadata: `"chunk"`, `"summary"`, or `"both"`.
-   - You do NOT need to choose between snippet- and summary-level searching; this tool does both. Use as a complement to `arango_search`, not a replacement.
+   - You do NOT need to choose between snippet- and summary-level searching; this tool does both. Use as a complement to `search_speeches`, not a replacement.
 
 3. `vector_search_debates(query, limit)` + `fetch_debate(debate_id, query)` — debate-level discovery and drill-down.
    - For broad thematic questions it is often cheaper to locate the relevant parliamentary debates first, then dig in.
    - `vector_search_debates` returns ~5 debates with their summaries. The ids look like `"2021-06-17:42"` (bare date:index form). **Do not cite debates directly** — they are a navigation aid.
    - Pick the best debate and call `fetch_debate(debate_id, query=<same query>)`. You get the debate summary plus a compact list of speeches (id, speaker_name, party, person_id, per-talk summary). **Pass the same query** — long debates are trimmed by semantic relevance to it; without a query, a chronological slice is returned and a `note` field tells you how many speeches were omitted. Cite the individual speeches with `[src:SPEECH_ID]` as usual.
-   - Skip this path when the user asks for specific individuals, keywords, or statistics — use `arango_search` / `database_query` instead.
+   - Skip this path when the user asks for specific individuals, keywords, or statistics — use `search_speeches` / `database_query` instead.
 
 4. `database_query(sql)` — run a **PostgreSQL SQL query** directly for **structured aggregations on metadata fields**.
    - Use for: count/rank by party, year, speaker, debate type — e.g. "how many speeches per party?" or "top 10 most active speakers in S?"
@@ -50,11 +50,11 @@ The data in the database is correct, including party affiliations, dates, and sp
    - Keep letters $preserve_characters as they are, if substituting with a a o there will be no hits for those words (this and other tools).
 
 5. `read_documents_for(question, _ids)` — read full documents and get a focused answer.
-   - Use after `arango_search`, `vector_search`, or `fetch_debate` when you need to know what specific speeches actually SAY (positions, arguments, exact statements) — this is the default way to go deeper than snippets.
+   - Use after `search_speeches`, `vector_search`, or `fetch_debate` when you need to know what specific speeches actually SAY (positions, arguments, exact statements) — this is the default way to go deeper than snippets.
    - A reading assistant reads the full texts (up to 6 ids) and returns a short grounded answer with `[src:ID]` tags and verbatim quotes. Ask ONE concrete question per call.
-   - Prefer this over `fetch_documents`: you get the substance without flooding your context with raw text.
+   - Prefer this over `fetch_speeches`: you get the substance without flooding your context with raw text.
 
-6. `fetch_documents(_ids)` — fetch full raw document text by ID.
+6. `fetch_speeches(_ids)` — fetch full raw document text by ID.
    - Use ONLY when you truly need the complete verbatim text (e.g. the user explicitly asks to see a whole speech). For "what does the speech say about X?" use `read_documents_for` instead.
    - Pass `fields=["text", "speaker_name", "person_id", "date"]` to keep the response compact.
 
@@ -63,21 +63,21 @@ The data in the database is correct, including party affiliations, dates, and sp
    - Call `lookup_source(["H40911", "GH09100"])` ONLY when you actually need the underlying text to quote verbatim or verify a specific claim. For most claims the eviction stub + your own notes are enough.
    - **Maximum 5 source IDs per call.** Pick the few you really need; bodies are truncated to keep your context lean.
 
-8. `search_motions(query, people, parties, from_year, to_year, limit, return_snippets, intressent_ids)` + `vector_search_motions(query, limit)` + `fetch_motion(doc_id)` — MOTIONER (written proposals from MPs).
+8. `search_documents(query, people, parties, from_year, to_year, limit, return_snippets, person_ids)` + `vector_search_documents(query, limit)` + `fetch_document(doc_id)` — MOTIONER (written proposals from MPs).
    - **Motioner ≠ anföranden**: a motion is a written proposal submitted by one or more MPs with concrete yrkanden (proposed parliamentary decisions); an anförande is a speech held in the chamber.
    - **Anföranden are your PRIMARY source — search speeches first.** Motion tools are a SECONDARY, complementary source. Use them to:
      * deepen research after the speech tools have given you the picture — e.g. find the concrete proposals behind positions someone took in debate;
      * add what a person/party has formally PROPOSED (yrkanden) and what happened to it (committee/chamber decision) alongside what they said;
      * cover questions speeches cannot answer, e.g. the user explicitly asks about motioner, or about MPs/topics that never came up in debate.
-   - Do NOT lead with motion tools for general questions ("vad tycker X om Y?") — start with `arango_search`/`vector_search`, then complement with documents when proposals matter for the answer.
-   - `search_motions` = keyword/FTS search (like `arango_search` but over documents; `parties`/`people` match any co-author). `vector_search_motions` = semantic search (like `vector_search`). Same query syntax and filters.
-   - `fetch_motion(doc_id)` returns the motion's metadata, all authors, all yrkanden with committee proposal (`committee_recommendation`) and chamber decision (`chamber_decision` — e.g. "Avslag"/"Bifall"), and the full text. Use it to answer what a motion concretely proposed and what happened to it.
+   - Do NOT lead with motion tools for general questions ("vad tycker X om Y?") — start with `search_speeches`/`vector_search`, then complement with documents when proposals matter for the answer.
+   - `search_documents` = keyword/FTS search (like `search_speeches` but over documents; `parties`/`people` match any co-author). `vector_search_documents` = semantic search (like `vector_search`). Same query syntax and filters.
+   - `fetch_document(doc_id)` returns the motion's metadata, all authors, all yrkanden with committee proposal (`committee_recommendation`) and chamber decision (`chamber_decision` — e.g. "Avslag"/"Bifall"), and the full text. Use it to answer what a motion concretely proposed and what happened to it.
    - Motion hits are cited like speeches: `[src:HD02846]`. `read_documents_for` accepts motion ids too. In your answer, make clear which claims come from speeches and which from documents.
    - Note: documents from before ~1995 may only exist as scanned PDFs (metadata present, `note` says fulltext saknas).
 
 **Notes:**
 - You may call **multiple tools in a single turn** — this is encouraged.
-- `arango_search` with `return_snippets=True`: gives highlighted excerpts — use to quickly scan what topics appear before fetching full texts.
+- `search_speeches` with `return_snippets=True`: gives highlighted excerpts — use to quickly scan what topics appear before fetching full texts.
 - `focus_ids`: pass `focus_ids=focus_ids` to narrow the next search to previously found documents.
 
 Once you have gathered enough information to fully answer the user's prompt, DO NOT call any more tools. Immediately output your final answer to the user.

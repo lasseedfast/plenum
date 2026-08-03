@@ -445,13 +445,13 @@ def _search_material(query: str, seen_ids: set, *,
     is what steers discovery toward party/issue threads instead of comparing
     individual debates by date. ``debates_limit=0`` skips the debate summaries
     (they carry no party attribution)."""
-    from backend.services.llm_tools import arango_search, vector_search_debates
+    from backend.services.llm_tools import search_speeches, vector_search_debates
 
     parts: List[str] = []
     # Speeches (anföranden): named speaker + party — the substance for positions.
     try:
         _tool_structured_result.set(None)
-        arango_search(query=query, return_snippets=True, limit=talks_limit)
+        search_speeches(query=query, return_snippets=True, limit=talks_limit)
         structured = _tool_structured_result.get()
         if isinstance(structured, SearchHitsResult) and structured.response.hits:
             lines = ["ANFÖRANDEN (party — speaker_name: utdrag [id]):"]
@@ -467,7 +467,7 @@ def _search_material(query: str, seen_ids: set, *,
             if len(lines) > 1:
                 parts.append("\n".join(lines))
     except Exception:
-        log.exception("discovery: arango_search failed")
+        log.exception("discovery: search_speeches failed")
     # Debate summaries: topical context only (no party attribution).
     if debates_limit > 0:
         try:
