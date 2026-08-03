@@ -201,9 +201,9 @@ export function SearchPanel({
 								<strong>Så här söker du:</strong>
 								<ul style={{ marginTop: "0.5em", paddingLeft: "1.2em" }}>
 									<li>
-										<b>Namn-sökning:</b> Skriv <code>@</code> före ett namn för att söka vad en viss person har sagt.<br />
+										<b>Namn-sökning:</b> Skriv <code>@</code> före ett name för att söka vad en viss person har sagt.<br />
 										<code>@Anders Borg bidrag</code> visar tal av Anders Borg om bidrag.<br />
-										<small>Du kan välja talare från förslagen under sökrutan.</small>
+										<small>Du kan välja speaker_name från förslagen under sökrutan.</small>
 									</li>
 									<li>
 										<b>"Google-stil":</b> Skriv ord eller fraser för att hitta tal där de förekommer.<br />
@@ -235,7 +235,7 @@ export function SearchPanel({
 					{/* --- End info panel --- */}
 					{speakerSuggestions.length > 0 && (
 						<div className="speaker-suggestions">
-							<span>Träffade talare:</span>
+							<span>Träffade speaker_name:</span>
 							{speakerSuggestions.map((suggestion) => (
 								<button type="button" key={suggestion} onClick={() => onSelectSpeaker(suggestion)}>
 									{suggestion}

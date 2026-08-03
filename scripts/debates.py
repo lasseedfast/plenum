@@ -6,7 +6,7 @@ Ersätter den ArangoDB-baserade versionen.
 Funktioner:
   assign_debate_ids(docs, date) → lägger till 'debate' fält i dokumentlistan
   make_debate_ids()             → tilldelas debatt-ID till alla anföranden utan ett sådant
-  process_debate_date(date, ..) → sammanfattar alla debatter för ett datum
+  process_debate_date(date, ..) → sammanfattar alla debatter för ett date
 """
 from pathlib import Path
 
@@ -29,15 +29,15 @@ from postgres_client import pg
 
 def assign_debate_ids(docs: list[dict], date: str) -> list[dict]:
     """
-    Assigns a debate id to each talk in a list of talks for a given date.
-    A new debate starts whenever replik == False.
+    Assigns a debate id to each talk in a list of speeches for a given date.
+    A new debate starts whenever is_reply == False.
     The debate id is a string: "{date}:{debate_index}".
     """
     debate_index = 0
     current_debate_id = f"{date}:{debate_index}"
     updated = []
     for doc in docs:
-        if not doc.get("replik", False):
+        if not doc.get("is_reply", False):
             debate_index += 1
             current_debate_id = f"{date}:{debate_index}"
         updated.append({**doc, "debate": current_debate_id})
@@ -46,35 +46,35 @@ def assign_debate_ids(docs: list[dict], date: str) -> list[dict]:
 
 def make_debate_ids() -> None:
     """
-    Find all talks without a debate field and assign debate IDs.
+    Find all speeches without a debate field and assign debate IDs.
     """
     dates = pg.execute(
-        "SELECT DISTINCT datum::text AS datum FROM talks WHERE debate IS NULL ORDER BY datum"
+        "SELECT DISTINCT date::text AS date FROM speeches WHERE debate IS NULL ORDER BY date"
     )
-    dates = [row["datum"] for row in dates if row.get("datum")]
-    print(f"Found {len(dates)} unique dates with talks missing debate ids")
+    dates = [row["date"] for row in dates if row.get("date")]
+    print(f"Found {len(dates)} unique dates with speeches missing debate ids")
 
     for date in dates:
-        talks = pg.execute(
+        speeches = pg.execute(
             """
-            SELECT id, replik
-            FROM talks
-            WHERE datum = %s::date
-            ORDER BY anforande_nummer ASC
+            SELECT id, is_reply
+            FROM speeches
+            WHERE date = %s::date
+            ORDER BY sequence ASC
             """,
             (date,),
         )
-        if not talks:
+        if not speeches:
             continue
 
-        updated = assign_debate_ids(list(talks), date)
+        updated = assign_debate_ids(list(speeches), date)
 
         # Batch UPDATE
         pg.execute_many(
-            "UPDATE talks SET debate = %s WHERE id = %s",
+            "UPDATE speeches SET debate = %s WHERE id = %s",
             [(doc["debate"], doc["id"]) for doc in updated],
         )
-        print(f"  {date}: assigned debate IDs to {len(updated)} talks", end="\r")
+        print(f"  {date}: assigned debate IDs to {len(updated)} speeches", end="\r")
 
     print()
 
@@ -84,14 +84,14 @@ def make_debate_ids() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def summarize_talk(talk: dict, llm: LLM) -> str:
-    talare = talk["talare"]
-    party = talk["parti"]
-    text = talk["anforandetext"]
-    if talk.get("replik"):
+    speaker_name = talk["speaker_name"]
+    party = talk["party"]
+    text = talk["text"]
+    if talk.get("is_reply"):
         prompt = f"""
 Nedan är ett tal från en debatt i Sveriges riksdag. Sammanfatta talet kort och koncist på svenska, fokusera på de viktigaste argumenten och sakförhållandena som framförs.
 Talet är ett svar på ett föregående tal. När du sammanfattar, se till att den går att förstå även utan att ha läst det föregående talet. Inkludera däremot INTE information eller argument från det föregående talet.
-Talaren är {talare} från {party}. Börja gärna sammanfattningen med "Namn (Parti) ..." för att tydligt ange vem som talar.
+Talaren är {speaker_name} från {party}. Börja gärna sammanfattningen med "Namn (Parti) ..." för att tydligt ange vem som talar.
 ---
 {text}
 ---
@@ -101,7 +101,7 @@ Svara _enbart_ med sammanfattningen, inga andra kommentarer eller förklaringar.
     else:
         prompt = f"""
 Nedan är ett tal från en debatt i Sveriges riksdag. Sammanfatta talet kort och koncist på svenska, fokusera på de viktigaste argumenten och sakförhållandena som framförs.
-Talaren är {talare} från {party}. Börja gärna sammanfattningen med "Namn (Parti) ..." för att tydligt ange vem som talar.
+Talaren är {speaker_name} från {party}. Börja gärna sammanfattningen med "Namn (Parti) ..." för att tydligt ange vem som talar.
 ---
 {text}
 ---
@@ -115,12 +115,12 @@ def process_debate_date(date: str, system_message: str) -> None:
     """
     Processes all debates for a given date: summarizes each talk and the debate.
     """
-    # Get distinct debates with unsummarized talks for this date
+    # Get distinct debates with unsummarized speeches for this date
     debates = pg.execute(
         """
         SELECT DISTINCT debate
-        FROM talks
-        WHERE datum = %s::date AND summary IS NULL AND debate IS NOT NULL
+        FROM speeches
+        WHERE date = %s::date AND summary IS NULL AND debate IS NOT NULL
         ORDER BY debate
         """,
         (date,),
@@ -130,35 +130,35 @@ def process_debate_date(date: str, system_message: str) -> None:
     for debate in debates:
         llm = LLM(model="vllm", temperature=0.2, system_message=system_message)
 
-        talks = pg.execute(
+        speeches = pg.execute(
             """
-            SELECT id, anforandetext, anforande_nummer, datum::text AS datum,
-                   replik, talare, parti
-            FROM talks
+            SELECT id, text, sequence, date::text AS date,
+                   is_reply, speaker_name, party
+            FROM speeches
             WHERE debate = %s
-            ORDER BY anforande_nummer ASC
+            ORDER BY sequence ASC
             """,
             (debate,),
         )
-        if not talks:
+        if not speeches:
             continue
 
-        print(f"Processing debate {debate} with {len(talks)} talks")
+        print(f"Processing debate {debate} with {len(speeches)} speeches")
         summaries = []
 
-        for talk in talks:
+        for talk in speeches:
             if talk.get("summary"):
-                summaries.append(f"{talk['talare']} ({talk['parti']}):\n{talk['summary']}")
+                summaries.append(f"{talk['speaker_name']} ({talk['party']}):\n{talk['summary']}")
                 continue
             summary = summarize_talk(talk, llm)
-            summaries.append(f"{talk['talare']} ({talk['parti']}):\n{summary}")
-            print(f"  Talk {talk['anforande_nummer']} summary: {summary[:80]}")
+            summaries.append(f"{talk['speaker_name']} ({talk['party']}):\n{summary}")
+            print(f"  Talk {talk['sequence']} summary: {summary[:80]}")
             pg.execute_void(
-                "UPDATE talks SET summary = %s WHERE id = %s",
+                "UPDATE speeches SET summary = %s WHERE id = %s",
                 (summary, talk["id"]),
             )
 
-        if len(talks) == 1:
+        if len(speeches) == 1:
             print_yellow(f"Debate {debate} has only one talk, skipping debate summary")
             continue
 
@@ -180,10 +180,10 @@ Svara **enbart** med sammanfattningen, inga andra kommentarer eller förklaringa
         debate_summary = llm.generate(query=prompt).content.strip()
         print_green(f"Debate summary:\n{debate_summary[:100]}")
 
-        talk_ids = [t["id"] for t in talks]
+        talk_ids = [t["id"] for t in speeches]
         pg.execute_void(
             """
-            INSERT INTO debates (debate, datum, summary, num_talks, talk_summaries, talk_ids)
+            INSERT INTO debates (debate, date, summary, num_talks, talk_summaries, talk_ids)
             VALUES (%s, %s::date, %s, %s, %s, %s)
             ON CONFLICT (debate) DO UPDATE SET
                 summary        = EXCLUDED.summary,
@@ -191,9 +191,9 @@ Svara **enbart** med sammanfattningen, inga andra kommentarer eller förklaringa
             """,
             (
                 debate,
-                talks[0]["datum"] if talks else None,
+                speeches[0]["date"] if speeches else None,
                 debate_summary,
-                len(talks),
+                len(speeches),
                 summaries,
                 talk_ids,
             ),
@@ -201,34 +201,34 @@ Svara **enbart** med sammanfattningen, inga andra kommentarer eller förklaringa
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Process debates where all talks are already summarized (no debate row yet)
+# Process debates where all speeches are already summarized (no debate row yet)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def process_ready_debate(debate_id: str, system_message: str) -> None:
     """
-    Creates a debates row for a debate whose talks are all already summarized.
+    Creates a debates row for a debate whose speeches are all already summarized.
     Skips single-talk debates (no aggregate summary needed).
     """
     llm = LLM(model="vllm", temperature=0.2, system_message=system_message)
 
-    talks = pg.execute(
+    speeches = pg.execute(
         """
-        SELECT id, summary, anforande_nummer, datum::text AS datum,
-               talare, parti
-        FROM talks
+        SELECT id, summary, sequence, date::text AS date,
+               speaker_name, party
+        FROM speeches
         WHERE debate = %s
-        ORDER BY anforande_nummer ASC
+        ORDER BY sequence ASC
         """,
         (debate_id,),
     )
-    if not talks:
+    if not speeches:
         return
 
-    if len(talks) == 1:
+    if len(speeches) == 1:
         print_yellow(f"Debate {debate_id} has only one talk, skipping")
         return
 
-    summaries = [f"{t['talare']} ({t['parti']}):\n{t['summary']}" for t in talks]
+    summaries = [f"{t['speaker_name']} ({t['party']}):\n{t['summary']}" for t in speeches]
     summaries_string = "\n---\n".join(summaries)
 
     prompt = f"""
@@ -248,10 +248,10 @@ Svara **enbart** med sammanfattningen, inga andra kommentarer eller förklaringa
     debate_summary = llm.generate(query=prompt).content.strip()
     print_green(f"Ready debate {debate_id} summary: {debate_summary[:80]}")
 
-    talk_ids = [t["id"] for t in talks]
+    talk_ids = [t["id"] for t in speeches]
     pg.execute_void(
         """
-        INSERT INTO debates (debate, datum, summary, num_talks, talk_summaries, talk_ids)
+        INSERT INTO debates (debate, date, summary, num_talks, talk_summaries, talk_ids)
         VALUES (%s, %s::date, %s, %s, %s, %s)
         ON CONFLICT (debate) DO UPDATE SET
             summary        = EXCLUDED.summary,
@@ -261,9 +261,9 @@ Svara **enbart** med sammanfattningen, inga andra kommentarer eller förklaringa
         """,
         (
             debate_id,
-            talks[0]["datum"] if talks else None,
+            speeches[0]["date"] if speeches else None,
             debate_summary,
-            len(talks),
+            len(speeches),
             summaries,
             talk_ids,
         ),
@@ -281,11 +281,11 @@ Sammanfattningarna ska vara på svenska och vara koncisa och informativa.
 Det är viktigt att du förstår vad som är kärnan i varje tal och debatt, fokusera därför på de argument och sakförhållanden som framförs.
 """
     while True:
-        # Phase 1: summarize talks and create debate rows for dates with unsummarized talks
+        # Phase 1: summarize speeches and create debate rows for dates with unsummarized speeches
         dates = pg.execute(
-            "SELECT DISTINCT datum::text AS datum FROM talks WHERE summary IS NULL ORDER BY datum"
+            "SELECT DISTINCT date::text AS date FROM speeches WHERE summary IS NULL ORDER BY date"
         )
-        dates = [row["datum"] for row in dates if row.get("datum")]
+        dates = [row["date"] for row in dates if row.get("date")]
 
         if dates:
             print(f"Found {len(dates)} unique dates to process.")
@@ -307,11 +307,11 @@ Det är viktigt att du förstår vad som är kärnan i varje tal och debatt, fok
                         errors += 1
                         print_red(f"Error processing date {date}: {exc}")
 
-        # Phase 2: create debate rows for debates where all talks are already summarized
+        # Phase 2: create debate rows for debates where all speeches are already summarized
         ready = pg.execute(
             """
             SELECT t.debate
-            FROM talks t
+            FROM speeches t
             LEFT JOIN debates d ON t.debate = d.debate
             WHERE t.debate IS NOT NULL AND d.debate IS NULL
             GROUP BY t.debate

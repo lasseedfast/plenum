@@ -8,7 +8,7 @@ export function MpChatView() {
     const { id } = useParams<{ id: string }>();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
-    const talkId = searchParams.get("talk_id") ?? undefined;
+    const talkId = searchParams.get("speech_id") ?? undefined;
     const sessionId = searchParams.get("session") ?? undefined;
 
     // Generate a session UUID on first visit and bake it into the URL

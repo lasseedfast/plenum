@@ -61,7 +61,7 @@ export function TalkView() {
 	};
 
 	// Fix image URLs from http to https
-	const imageUrl = talk.person?.bild_url_192?.replace('http://', 'https://');
+	const imageUrl = talk.person?.image_url_medium?.replace('http://', 'https://');
 	const summaryHtml = talk.summary ? convertMarkdownToHtml(talk.summary) : null;
 	
 	const previousTalk = talk.navigation?.previous ?? null;
@@ -77,7 +77,7 @@ export function TalkView() {
 		const idString = typeof rawId === 'object' && rawId !== null && '_id' in rawId 
 			? (rawId as any)._id 
 			: String(rawId);
-		const result = idString.startsWith("talks/") ? idString.slice(6) : idString;
+		const result = idString.startsWith("speeches/") ? idString.slice(6) : idString;
 		return result;
 	};
 	const previousId = normalizeTalkId(previousTalk);
@@ -137,28 +137,28 @@ export function TalkView() {
 				{imageUrl && (
 					<img 
 						src={imageUrl} 
-						alt={talk.talare}
+						alt={talk.speaker_name}
 						className="talk-view__speaker-photo talk-view__speaker-photo--enhanced"
 					/>
 				)}
 				<div className="talk-view__speaker-info">
 					<div className="talk-view__speaker-row">
-						{talk.person?.intressent_id ? (
-							<Link to={`/mp/${talk.person.intressent_id}`} className="talk-view__speaker-name-link">
-								<h1>{talk.talare}</h1>
+						{talk.person?.person_id ? (
+							<Link to={`/mp/${talk.person.person_id}`} className="talk-view__speaker-name-link">
+								<h1>{talk.speaker_name}</h1>
 							</Link>
 						) : (
-							<h1>{talk.talare}</h1>
+							<h1>{talk.speaker_name}</h1>
 						)}
-						<span className="party-chip" data-party={talk.parti ?? ""} style={{ "--party-color": `var(--party-${talk.parti ?? ""})` } as React.CSSProperties}>
-							{talk.parti}
+						<span className="party-chip" data-party={talk.party ?? ""} style={{ "--party-color": `var(--party-${talk.party ?? ""})` } as React.CSSProperties}>
+							{talk.party}
 						</span>
 					</div>
 					<div className="talk-view__speaker-meta">
-						{/* Show valkrets if available */}
-						{talk.person?.valkrets && (
+						{/* Show constituency if available */}
+						{talk.person?.constituency && (
 							<span className="talk-view__speaker-detail">
-								{talk.person.valkrets}
+								{talk.person.constituency}
 							</span>
 						)}
 						{/* Show status if available */}
@@ -168,12 +168,12 @@ export function TalkView() {
 							</span>
 						)}
 					</div>
-					{talk.person?.intressent_id && (
+					{talk.person?.person_id && (
 						<Link
-							to={`/mp/${talk.person.intressent_id}?talk_id=${id}`}
+							to={`/mp/${talk.person.person_id}?speech_id=${id}`}
 							className="secondary-button talk-view__chat-btn"
 						>
-							Chatta med {talk.person?.tilltalsnamn || talk.talare}
+							Chatta med {talk.person?.first_name || talk.speaker_name}
 						</Link>
 					)}
 				</div>
@@ -183,18 +183,18 @@ export function TalkView() {
 			<div className="panel talk-view__metadata">
 				<dl className="talk-view__meta-grid">
 					<dt>Datum</dt>
-					<dd>{talk.datum}</dd>
+					<dd>{talk.date}</dd>
 					
 					<dt>Debattyp</dt>
-					<dd>{talk.kammaraktivitet}</dd>
+					<dd>{talk.activity_type}</dd>
 					
 					<dt>Rubrik</dt>
-					<dd>{talk.avsnittsrubrik}</dd>
+					<dd>{talk.section_title}</dd>
 					
-					{talk.titel && (
+					{talk.title && (
 						<>
 							<dt>Protokoll</dt>
-							<dd>{talk.titel}</dd>
+							<dd>{talk.title}</dd>
 						</>
 					)}
 				</dl>
@@ -215,7 +215,7 @@ export function TalkView() {
 			{/* Talk text */}
 			<div className="panel talk-view__text">
 				<div className="talk-view__content">
-					{talk.anforandetext}
+					{talk.text}
 				</div>
 			</div>
 

@@ -50,7 +50,7 @@ def _clean_title(title: str) -> Optional[str]:
     """A board title from the discovery pass, or None to keep the placeholder.
 
     Models like to answer a "max 60 chars" instruction with a sentence, so trim
-    on a word boundary and drop the trailing period rather than trusting it.
+    on a word boundary and drop the trailing year rather than trusting it.
     """
     title = " ".join((title or "").split()).strip().strip('"').rstrip(".")
     if len(title) < 3:

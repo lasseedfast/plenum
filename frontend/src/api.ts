@@ -168,12 +168,12 @@ export async function fetchTalk(id: string): Promise<any> {
 }
 
 /**
- * Fetches a single motion by its dok_id, including authors and yrkanden.
+ * Fetches a single motion by its doc_id, including authors and yrkanden.
  *
- * @param id - The motion dok_id (e.g., "HD02846"), with or without "motions/" prefix
+ * @param id - The motion doc_id (e.g., "HD02846"), with or without "documents/" prefix
  */
 export async function fetchMotion(id: string): Promise<any> {
-	const bare = id.startsWith("motions/") ? id.slice("motions/".length) : id;
+	const bare = id.startsWith("documents/") ? id.slice("documents/".length) : id;
 	const response = await fetch(`/api/motion/${encodeURIComponent(bare)}`, {
 		headers: getSessionHeaders(),
 	});
@@ -213,8 +213,8 @@ export async function upsertSession(uuid: string, data: SessionUpsertData): Prom
  */
 export async function createSnapshot(data: {
 	session_type: "general" | "mp";
-	intressent_id?: string | null;
-	initial_talk_id?: string | null;
+	person_id?: string | null;
+	initial_speech_id?: string | null;
 	llm_messages?: unknown[];
 	turns: SnapshotTurn[];
 	focus_ids?: string[];
@@ -255,10 +255,10 @@ export async function getSnapshot(uuid: string): Promise<SnapshotData | null> {
 }
 
 /**
- * Fetches basic info for a Riksdag member by intressent_id.
+ * Fetches basic info for a Riksdag member by person_id.
  */
-export async function fetchPerson(intressent_id: string): Promise<PersonDetail> {
-	const { data } = await client.get<PersonDetail>(`/person/${encodeURIComponent(intressent_id)}`);
+export async function fetchPerson(person_id: string): Promise<PersonDetail> {
+	const { data } = await client.get<PersonDetail>(`/person/${encodeURIComponent(person_id)}`);
 	return data;
 }
 

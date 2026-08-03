@@ -27,7 +27,7 @@ function serializeMentions(mentions: MentionSuggestion[]): string {
   if (!mentions.length) return "";
   return mentions
     .filter(m => m._key)
-    .map(m => `\nINTRESSENT_IDS${m.name} har intressent_id ${m._key}`)
+    .map(m => `\nINTRESSENT_IDS${m.name} har person_id ${m._key}`)
     .join("");
 }
 
@@ -137,7 +137,7 @@ export const MentionTextarea = forwardRef(function MentionTextarea(
             .map((entry) =>
               typeof entry === "string"
                 ? { name: entry }
-                : { name: entry.name ?? entry.namn ?? "", _key: entry._key ?? (entry as any)?.key },
+                : { name: entry.name ?? entry.name ?? "", _key: entry._key ?? (entry as any)?.key },
             )
             .filter((entry) => entry.name.length > 0);
           const still = getTokenInfo();

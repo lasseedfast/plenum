@@ -84,7 +84,7 @@ def _render_event(e: Dict[str, Any]) -> str:
     if etype == "stats_card":
         return f"- `{t_s:7.1f}s` stats_card rows={len(e.get('rows') or [])}"
     if etype == "tool_speakers":
-        return f"- `{t_s:7.1f}s` tool_speakers: {e.get('intressent_ids')}"
+        return f"- `{t_s:7.1f}s` tool_speakers: {e.get('person_ids')}"
     return f"- `{t_s:7.1f}s` {etype}: {_preview({k: v for k, v in e.items() if k not in ('i', 't_ms', 'type')})}"
 
 

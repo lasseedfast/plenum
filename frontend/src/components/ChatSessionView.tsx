@@ -25,7 +25,7 @@ export function ChatSessionView() {
 	const [chatInput, setChatInput] = useState("");
 	const [isChatSending, setIsChatSending] = useState(false);
 	const [sessionLoaded, setSessionLoaded] = useState(false);
-	const [chatMentionedMp, setChatMentionedMp] = useState<{ name: string; intressent_id: string } | null>(null);
+	const [chatMentionedMp, setChatMentionedMp] = useState<{ name: string; person_id: string } | null>(null);
 	const [shareToast, setShareToast] = useState<"copying" | "copied" | "error" | null>(null);
 
 	const chatPanelRef = useRef<ChatPanelHandle | null>(null);
@@ -184,13 +184,13 @@ export function ChatSessionView() {
 					onResetChat={handleResetChat}
 					chatInputRef={chatInputRef}
 					onChatMentionSelect={(suggestion) => {
-						if (suggestion._key) setChatMentionedMp({ name: suggestion.name, intressent_id: suggestion._key });
+						if (suggestion._key) setChatMentionedMp({ name: suggestion.name, person_id: suggestion._key });
 					}}
 				/>
 
 				{chatMentionedMp && (
 					<div className="mp-chat-shortcut">
-						<Link to={`/mp/${chatMentionedMp.intressent_id}`} className="secondary-button">
+						<Link to={`/mp/${chatMentionedMp.person_id}`} className="secondary-button">
 							Chatta med {chatMentionedMp.name}
 						</Link>
 					</div>

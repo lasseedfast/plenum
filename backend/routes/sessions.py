@@ -15,8 +15,8 @@ router = APIRouter(prefix="/api", tags=["sessions"])
 
 class SessionUpsertRequest(BaseModel):
     session_type: Literal["general", "mp"]
-    intressent_id: Optional[str] = None
-    initial_talk_id: Optional[str] = None
+    person_id: Optional[str] = None
+    initial_speech_id: Optional[str] = None
     llm_messages: List[dict] = []
     turns: List[dict] = []
     focus_ids: List[str] = []
@@ -29,8 +29,8 @@ class SessionUpsertRequest(BaseModel):
 class SessionResponse(BaseModel):
     id: str
     session_type: str
-    intressent_id: Optional[str]
-    initial_talk_id: Optional[str]
+    person_id: Optional[str]
+    initial_speech_id: Optional[str]
     llm_messages: List[dict]
     turns: List[dict]
     focus_ids: List[str]
@@ -55,7 +55,7 @@ def get_session(
 ) -> SessionResponse:
     rows = pg.execute(
         """
-        SELECT id::text, session_type, intressent_id, initial_talk_id,
+        SELECT id::text, session_type, person_id, initial_speech_id,
                llm_messages, turns, focus_ids, user_id::text AS user_id, enc_payload
         FROM chat_sessions
         WHERE id = %s
@@ -75,8 +75,8 @@ def get_session(
     return SessionResponse(
         id=row["id"],
         session_type=row["session_type"],
-        intressent_id=row.get("intressent_id"),
-        initial_talk_id=row.get("initial_talk_id"),
+        person_id=row.get("person_id"),
+        initial_speech_id=row.get("initial_speech_id"),
         llm_messages=row["llm_messages"] or [],
         turns=row["turns"] or [],
         focus_ids=list(row["focus_ids"] or []),
@@ -112,8 +112,8 @@ def upsert_session(
                 llm_messages  = '[]'::jsonb,
                 turns         = '[]'::jsonb,
                 focus_ids     = '{}',
-                intressent_id = NULL,
-                initial_talk_id = NULL,
+                person_id = NULL,
+                initial_speech_id = NULL,
                 last_activity = NOW()
             """,
             (
@@ -128,7 +128,7 @@ def upsert_session(
         pg.execute_void(
             """
             INSERT INTO chat_sessions
-                (id, session_type, intressent_id, initial_talk_id,
+                (id, session_type, person_id, initial_speech_id,
                  llm_messages, turns, focus_ids, last_activity)
             VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, NOW())
             ON CONFLICT (id) DO UPDATE SET
@@ -140,8 +140,8 @@ def upsert_session(
             (
                 str(session_id),
                 payload.session_type,
-                payload.intressent_id,
-                payload.initial_talk_id,
+                payload.person_id,
+                payload.initial_speech_id,
                 json.dumps(payload.llm_messages),
                 json.dumps(payload.turns),
                 payload.focus_ids,
@@ -200,8 +200,8 @@ def delete_my_chat(session_id: UUID, user: dict = Depends(get_current_user)) -> 
 
 class SnapshotCreateRequest(BaseModel):
     session_type: Literal["general", "mp"]
-    intressent_id: Optional[str] = None
-    initial_talk_id: Optional[str] = None
+    person_id: Optional[str] = None
+    initial_speech_id: Optional[str] = None
     llm_messages: List[dict] = []
     turns: List[dict] = []
     focus_ids: List[str] = []
@@ -214,8 +214,8 @@ class SnapshotCreateResponse(BaseModel):
 class SnapshotResponse(BaseModel):
     id: str
     session_type: str
-    intressent_id: Optional[str]
-    initial_talk_id: Optional[str] = None
+    person_id: Optional[str]
+    initial_speech_id: Optional[str] = None
     turns: List[dict]
     llm_messages: List[dict] = []
     focus_ids: List[str] = []
@@ -229,14 +229,14 @@ def create_snapshot(payload: SnapshotCreateRequest) -> SnapshotCreateResponse:
     pg.execute_void(
         """
         INSERT INTO chat_snapshots
-            (id, session_type, intressent_id, initial_talk_id, llm_messages, turns, focus_ids, last_activity)
+            (id, session_type, person_id, initial_speech_id, llm_messages, turns, focus_ids, last_activity)
         VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, NOW())
         """,
         (
             snapshot_id,
             payload.session_type,
-            payload.intressent_id,
-            payload.initial_talk_id,
+            payload.person_id,
+            payload.initial_speech_id,
             json.dumps(payload.llm_messages),
             json.dumps(payload.turns),
             payload.focus_ids,
@@ -263,7 +263,7 @@ def fork_snapshot(snapshot_id: UUID) -> ForkSnapshotResponse:
     import uuid as uuid_lib
     rows = pg.execute(
         """
-        SELECT session_type, intressent_id, initial_talk_id, llm_messages, turns, focus_ids
+        SELECT session_type, person_id, initial_speech_id, llm_messages, turns, focus_ids
         FROM chat_snapshots
         WHERE id = %s
         """,
@@ -277,15 +277,15 @@ def fork_snapshot(snapshot_id: UUID) -> ForkSnapshotResponse:
     pg.execute_void(
         """
         INSERT INTO chat_sessions
-            (id, session_type, intressent_id, initial_talk_id,
+            (id, session_type, person_id, initial_speech_id,
              llm_messages, turns, focus_ids, last_activity)
         VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, NOW())
         """,
         (
             session_id,
             row["session_type"],
-            row.get("intressent_id"),
-            row.get("initial_talk_id"),
+            row.get("person_id"),
+            row.get("initial_speech_id"),
             json.dumps(row["llm_messages"] or []),
             json.dumps(row["turns"] or []),
             list(row["focus_ids"] or []),
@@ -306,7 +306,7 @@ def fork_snapshot(snapshot_id: UUID) -> ForkSnapshotResponse:
 def get_snapshot(snapshot_id: UUID) -> SnapshotResponse:
     rows = pg.execute(
         """
-        SELECT id::text, session_type, intressent_id, initial_talk_id,
+        SELECT id::text, session_type, person_id, initial_speech_id,
                turns, llm_messages, focus_ids, created_at::text
         FROM chat_snapshots
         WHERE id = %s
@@ -320,8 +320,8 @@ def get_snapshot(snapshot_id: UUID) -> SnapshotResponse:
     return SnapshotResponse(
         id=row["id"],
         session_type=row["session_type"],
-        intressent_id=row.get("intressent_id"),
-        initial_talk_id=row.get("initial_talk_id"),
+        person_id=row.get("person_id"),
+        initial_speech_id=row.get("initial_speech_id"),
         turns=row["turns"] or [],
         llm_messages=row["llm_messages"] or [],
         focus_ids=list(row["focus_ids"] or []),

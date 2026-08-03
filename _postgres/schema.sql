@@ -8,84 +8,84 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;  -- for ILIKE index support on prefix se
 -- people
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS people (
-    intressent_id   TEXT PRIMARY KEY,
-    hangar_id       TEXT,
-    hangar_guid     TEXT,
-    sourceid        TEXT,
-    fodd_ar         TEXT,
-    kon             TEXT,
-    efternamn       TEXT,
-    tilltalsnamn    TEXT,
-    sorteringsnamn  TEXT,
-    iort            TEXT,
-    parti           TEXT,
-    valkrets        TEXT,
+    person_id   TEXT PRIMARY KEY,
+    source_record_id       TEXT,
+    source_record_guid     TEXT,
+    source_id        TEXT,
+    birth_year         TEXT,
+    gender             TEXT,
+    last_name       TEXT,
+    first_name    TEXT,
+    sort_name  TEXT,
+    home_town            TEXT,
+    party           TEXT,
+    constituency        TEXT,
     status          TEXT,
-    person_url_xml  TEXT,
-    bild_url_80     TEXT,
-    bild_url_192    TEXT,
-    bild_url_max    TEXT,
-    personuppdrag   JSONB,   -- nested assignment array, kept as-is
-    personuppgift   JSONB,   -- nested contact info array, kept as-is
-    namn            TEXT,
-    aktiv           BOOLEAN
+    source_url  TEXT,
+    image_url_small     TEXT,
+    image_url_medium    TEXT,
+    image_url_large    TEXT,
+    assignments   JSONB,   -- nested assignment array, kept as-is
+    contact_details   JSONB,   -- nested contact info array, kept as-is
+    name            TEXT,
+    active           BOOLEAN
 );
 
-CREATE INDEX IF NOT EXISTS people_parti_idx ON people (parti);
-CREATE INDEX IF NOT EXISTS people_namn_idx  ON people (namn);
+CREATE INDEX IF NOT EXISTS people_parti_idx ON people (party);
+CREATE INDEX IF NOT EXISTS people_namn_idx  ON people (name);
 
 -- ─────────────────────────────────────────
--- talks
+-- speeches
 -- ─────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS talks (
-    -- Primary key: dok_id (e.g. "H40911"), called "id" in the source data
+CREATE TABLE IF NOT EXISTS speeches (
+    -- Primary key: source_doc_id (e.g. "H40911"), called "id" in the source data
     id              TEXT PRIMARY KEY,
 
     -- Original UUID from riksdagen (preserved for reference after key migration)
-    anforande_id    TEXT,
+    source_speech_id    TEXT,
 
     -- Core content
-    anforandetext   TEXT,
-    avsnittsrubrik  TEXT,
+    text   TEXT,
+    section_title  TEXT,
 
     -- Metadata
-    anforande_nummer INTEGER,
-    kammaraktivitet TEXT,
-    talare          TEXT,
-    parti           TEXT,
-    intressent_id   TEXT,      -- references people(intressent_id), nullable
+    sequence INTEGER,
+    activity_type TEXT,
+    speaker_name          TEXT,
+    party           TEXT,
+    person_id   TEXT,      -- references people(person_id), nullable
 
     -- Date fields
-    datum           DATE,      -- e.g. 2016-09-29
-    dok_datum       TEXT,      -- original datetime string from riksdagen API
+    date           DATE,      -- e.g. 2016-09-29
+    source_datetime       TEXT,      -- original datetime string from riksdagen API
     year            INTEGER,
-    period          INTEGER,   -- parliamentary session year (start year)
+    session_year          INTEGER,   -- parliamentary session year (start year)
 
     -- Document references
-    -- `dok_id` is the id of the protocol document this speech appeared in. It is
+    -- `source_doc_id` is the id of the protocol document this speech appeared in. It is
     -- written by the ingest step and is NOT the same as `id` above, despite `id`
-    -- historically being described as "the dok_id" — that comment refers to the
+    -- historically being described as "the source_doc_id" — that comment refers to the
     -- source field named "id", which happens to look like a document id.
-    dok_id          TEXT,
-    rel_dok_id      TEXT,
-    dok_nummer      TEXT,
-    hangar_id       TEXT,
-    titel           TEXT,      -- debate/session title
+    source_doc_id          TEXT,
+    related_doc_id      TEXT,
+    source_doc_number      TEXT,
+    source_record_id       TEXT,
+    title           TEXT,      -- debate_id/session title
 
     -- Debate grouping
-    debate          TEXT,      -- e.g. "2016-09-29:56"
-    replik          BOOLEAN,
+    debate_id          TEXT,      -- e.g. "2016-09-29:56"
+    is_reply          BOOLEAN,
 
     -- LLM-generated fields
     summary         TEXT,
     tags            TEXT[],
 
     -- URL fields (populated from riksdagen API, may be null)
-    debateurl       TEXT,
+    url_video       TEXT,
     url_session     TEXT,
     url_audio       TEXT,
-    audiofileurl    TEXT,
-    startpos        INTEGER,
+    url_audio_file    TEXT,
+    audio_start_seconds        INTEGER,
 
     -- LLM-derived. `arguments` holds extracted argument sentences; the two
     -- booleans are pipeline bookkeeping so a re-run can skip finished rows.
@@ -93,8 +93,8 @@ CREATE TABLE IF NOT EXISTS talks (
     arguments_corrected   BOOLEAN DEFAULT FALSE,
     tagging_failed        BOOLEAN DEFAULT FALSE,
 
-    -- Embedding of `summary`, for debate-level semantic search. Distinct from
-    -- `chunks.embedding`, which covers the full text passage by passage.
+    -- Embedding of `summary`, for debate_id-level semantic search. Distinct from
+    -- `speech_chunks.embedding`, which covers the full text passage by passage.
     summary_embedding vector(384),
 
     -- Full-text search vector (auto-maintained by trigger)
@@ -102,53 +102,53 @@ CREATE TABLE IF NOT EXISTS talks (
 );
 
 -- Full-text search index (Swedish)
-CREATE INDEX IF NOT EXISTS talks_search_idx     ON talks USING GIN (search_vector);
+CREATE INDEX IF NOT EXISTS speeches_search_idx     ON speeches USING GIN (search_vector);
 
 -- Filtering indexes
-CREATE INDEX IF NOT EXISTS talks_debate_idx     ON talks (debate, anforande_nummer);
-CREATE INDEX IF NOT EXISTS talks_parti_idx      ON talks (parti);
-CREATE INDEX IF NOT EXISTS talks_datum_idx      ON talks (datum);
-CREATE INDEX IF NOT EXISTS talks_year_idx       ON talks (year);
-CREATE INDEX IF NOT EXISTS talks_intressent_idx ON talks (intressent_id);
-CREATE INDEX IF NOT EXISTS talks_talare_idx     ON talks USING GIN (to_tsvector('simple', coalesce(talare, '')));
-CREATE INDEX IF NOT EXISTS talks_dok_id_idx      ON talks (dok_id);
+CREATE INDEX IF NOT EXISTS speeches_debate_idx     ON speeches (debate, sequence);
+CREATE INDEX IF NOT EXISTS speeches_party_idx      ON speeches (party);
+CREATE INDEX IF NOT EXISTS speeches_date_idx      ON speeches (date);
+CREATE INDEX IF NOT EXISTS speeches_year_idx       ON speeches (year);
+CREATE INDEX IF NOT EXISTS speeches_person_idx ON speeches (person_id);
+CREATE INDEX IF NOT EXISTS speeches_speaker_idx     ON speeches USING GIN (to_tsvector('simple', coalesce(speaker_name, '')));
+CREATE INDEX IF NOT EXISTS speeches_source_doc_idx      ON speeches (dok_id);
 
--- Semantic search over per-speech summaries (separate from chunks.embedding,
+-- Semantic search over per-speech summaries (separate from speech_chunks.embedding,
 -- which indexes the full text passage by passage).
-CREATE INDEX IF NOT EXISTS talks_summary_embedding_idx ON talks
+CREATE INDEX IF NOT EXISTS speeches_summary_embedding_idx ON speeches
     USING hnsw (summary_embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 -- Trigger to keep search_vector up to date on insert/update
 CREATE OR REPLACE FUNCTION talks_search_vector_update() RETURNS TRIGGER AS $$
 BEGIN
-    NEW.search_vector := to_tsvector('swedish', coalesce(NEW.anforandetext, ''));
+    NEW.search_vector := to_tsvector('swedish', coalesce(NEW.text, ''));
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS talks_search_vector_trigger ON talks;
+DROP TRIGGER IF EXISTS talks_search_vector_trigger ON speeches;
 CREATE TRIGGER talks_search_vector_trigger
-    BEFORE INSERT OR UPDATE OF anforandetext
-    ON talks
+    BEFORE INSERT OR UPDATE OF text
+    ON speeches
     FOR EACH ROW
     EXECUTE FUNCTION talks_search_vector_update();
 
 -- ─────────────────────────────────────────
--- chunks  (text chunks + vector embeddings)
+-- speech_chunks  (text speech_chunks + vector embeddings)
 -- ─────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS chunks (
-    -- Key: "{talk_id}:{chunk_index}", e.g. "H40911:0"
+CREATE TABLE IF NOT EXISTS speech_chunks (
+    -- Key: "{speech_id}:{chunk_index}", e.g. "H40911:0"
     id          TEXT PRIMARY KEY,
 
-    talk_id     TEXT NOT NULL REFERENCES talks(id) ON DELETE CASCADE,
+    speech_id     TEXT NOT NULL REFERENCES speeches(id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
     text        TEXT NOT NULL,
     embedding   vector(384)
 );
 
-CREATE INDEX IF NOT EXISTS chunks_talk_idx      ON chunks (talk_id);
+CREATE INDEX IF NOT EXISTS speech_chunks_speech_idx      ON speech_chunks (speech_id);
 -- HNSW index for approximate nearest-neighbour cosine search
-CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks USING hnsw (embedding vector_cosine_ops)
+CREATE INDEX IF NOT EXISTS speech_chunks_embedding_idx ON speech_chunks USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
 
 -- ─────────────────────────────────────────
@@ -156,145 +156,145 @@ CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks USING hnsw (embedding 
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS debates (
     -- Key: "{date}:{debate_index}", e.g. "2016-09-29:56"
-    debate          TEXT PRIMARY KEY,
+    id          TEXT PRIMARY KEY,
 
-    datum           DATE,
+    date           DATE,
     summary         TEXT,
     num_talks       INTEGER,
     talk_summaries  TEXT[],   -- array of individual talk summary strings
-    talk_ids        TEXT[],   -- array of talk ids (without "talks/" prefix)
+    talk_ids        TEXT[],   -- array of talk ids (without "speeches/" prefix)
 
     summary_embedding vector(384)
 );
 
-CREATE INDEX IF NOT EXISTS debates_datum_idx ON debates (datum);
+CREATE INDEX IF NOT EXISTS debates_date_idx ON debates (date);
 CREATE INDEX IF NOT EXISTS debates_summary_embedding_idx ON debates
     USING hnsw (summary_embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 -- ─────────────────────────────────────────
--- motions  (motioner from riksdagens öppna data)
+-- documents  (motioner from riksdagens öppna data)
 -- ─────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS motions (
-    -- Primary key: dok_id (e.g. "HD02846")
-    dok_id          TEXT PRIMARY KEY,
-    hangar_id       TEXT,
+CREATE TABLE IF NOT EXISTS documents (
+    -- Primary key: doc_id (e.g. "HD02846")
+    doc_id          TEXT PRIMARY KEY,
+    source_record_id       TEXT,
 
     -- Identity / classification
-    rm              TEXT,       -- riksmöte, e.g. "2022/23"
-    beteckning      TEXT,       -- motion number within rm, e.g. "846"
-    subtyp          TEXT,       -- e.g. "Enskild motion", "Kommittémotion"
-    organ           TEXT,       -- committee the motion was referred to, e.g. "AU"
+    session_label              TEXT,       -- riksmöte, e.g. "2022/23"
+    designation      TEXT,       -- motion number within session_label, e.g. "846"
+    subtype          TEXT,       -- e.g. "Enskild motion", "Kommittémotion"
+    committee           TEXT,       -- committee the motion was referred to, e.g. "AU"
     status          TEXT,       -- e.g. "Klar", "Inkommen"
 
     -- Dates
-    datum           DATE,
-    systemdatum     TEXT,       -- raw string, used for change detection
-    publicerad      TEXT,
-    year            INTEGER,    -- int(rm[:4]), mirrors talks.period
+    date           DATE,
+    source_updated_at     TEXT,       -- raw string, used for change detection
+    published_at      TEXT,
+    session_year            INTEGER,    -- int(session_label[:4]), mirrors speeches.session_year
 
     -- Content
-    titel           TEXT,
-    undertitel      TEXT,
+    title           TEXT,
+    subtitle      TEXT,
     text            TEXT,       -- plain text extracted from the html field
-    forslag_text    TEXT,       -- concat of yrkande lydelser (high-signal, weighted B in FTS)
+    proposals_text    TEXT,       -- concat of yrkande lydelser (high-signal, weighted B in FTS)
     has_text        BOOLEAN NOT NULL DEFAULT FALSE,  -- false for scanned-PDF-only documents
 
     -- Source URLs
-    dokument_url_text TEXT,
-    dokument_url_html TEXT,
-    pdf_url         TEXT,
+    url_text TEXT,
+    url_html TEXT,
+    url_pdf         TEXT,
 
-    -- Authors (denormalized; relational detail in motion_authors)
+    -- Authors (denormalized; relational detail in document_authors)
     parties         TEXT[] NOT NULL DEFAULT '{}',
     author_names    TEXT[] NOT NULL DEFAULT '{}',    -- in signing order
 
     -- Proposals and attachments, raw from dokumentstatus
-    forslag         JSONB,      -- dokforslag list: yrkanden + utskottsförslag + kammarens beslut
-    bilagor         JSONB,      -- dokbilaga list
-    num_yrkanden    INTEGER NOT NULL DEFAULT 0,
+    proposals_raw         JSONB,      -- dokforslag list: yrkanden + utskottsförslag + kammarens beslut
+    attachments         JSONB,      -- dokbilaga list
+    num_proposals    INTEGER NOT NULL DEFAULT 0,
 
-    -- LLM-generated fields (future parity with talks)
+    -- LLM-generated fields (future parity with speeches)
     summary         TEXT,
 
     -- Full-text search vector (auto-maintained by trigger)
     search_vector   TSVECTOR
 );
 
-CREATE INDEX IF NOT EXISTS motions_search_idx  ON motions USING GIN (search_vector);
-CREATE INDEX IF NOT EXISTS motions_datum_idx   ON motions (datum);
-CREATE INDEX IF NOT EXISTS motions_year_idx    ON motions (year);
-CREATE INDEX IF NOT EXISTS motions_organ_idx   ON motions (organ);
-CREATE INDEX IF NOT EXISTS motions_parties_idx ON motions USING GIN (parties);
+CREATE INDEX IF NOT EXISTS documents_search_idx  ON documents USING GIN (search_vector);
+CREATE INDEX IF NOT EXISTS documents_date_idx   ON documents (date);
+CREATE INDEX IF NOT EXISTS documents_session_year_idx    ON documents (year);
+CREATE INDEX IF NOT EXISTS documents_committee_idx   ON documents (committee);
+CREATE INDEX IF NOT EXISTS documents_parties_idx ON documents USING GIN (parties);
 
 CREATE OR REPLACE FUNCTION motions_search_vector_update() RETURNS TRIGGER AS $$
 BEGIN
     NEW.search_vector :=
-        setweight(to_tsvector('swedish', coalesce(NEW.titel, '')), 'A') ||
-        setweight(to_tsvector('swedish', coalesce(NEW.forslag_text, '')), 'B') ||
-        setweight(to_tsvector('swedish', coalesce(NEW.undertitel, '')), 'C') ||
+        setweight(to_tsvector('swedish', coalesce(NEW.title, '')), 'A') ||
+        setweight(to_tsvector('swedish', coalesce(NEW.proposals_text, '')), 'B') ||
+        setweight(to_tsvector('swedish', coalesce(NEW.subtitle, '')), 'C') ||
         setweight(to_tsvector('swedish', coalesce(NEW.text, '')), 'D');
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS motions_search_vector_trigger ON motions;
+DROP TRIGGER IF EXISTS motions_search_vector_trigger ON documents;
 CREATE TRIGGER motions_search_vector_trigger
-    BEFORE INSERT OR UPDATE OF titel, undertitel, text, forslag_text
-    ON motions
+    BEFORE INSERT OR UPDATE OF title, subtitle, text, proposals_text
+    ON documents
     FOR EACH ROW
     EXECUTE FUNCTION motions_search_vector_update();
 
 -- ─────────────────────────────────────────
--- motion_authors  (undertecknare, in signing order)
+-- document_authors  (undertecknare, in signing order)
 -- ─────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS motion_authors (
-    dok_id        TEXT NOT NULL REFERENCES motions(dok_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS document_authors (
+    doc_id        TEXT NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
     ordinal       INTEGER NOT NULL,   -- position in dokintressent list
-    -- Soft link to people(intressent_id); no FK — 1990s ids may be missing from people
-    intressent_id TEXT,
-    namn          TEXT,
-    partibet      TEXT,
-    roll          TEXT,               -- e.g. "undertecknare"
-    PRIMARY KEY (dok_id, ordinal)
+    -- Soft link to people(person_id); no FK — 1990s ids may be missing from people
+    person_id TEXT,
+    name          TEXT,
+    party      TEXT,
+    role          TEXT,               -- e.g. "undertecknare"
+    PRIMARY KEY (doc_id, ordinal)
 );
 
-CREATE INDEX IF NOT EXISTS motion_authors_intressent_idx ON motion_authors (intressent_id);
+CREATE INDEX IF NOT EXISTS document_authors_person_idx ON document_authors (person_id);
 
 -- ─────────────────────────────────────────
--- motion_chunks  (text chunks + vector embeddings)
+-- document_chunks  (text speech_chunks + vector embeddings)
 -- ─────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS motion_chunks (
+CREATE TABLE IF NOT EXISTS document_chunks (
     -- Key: "{dok_id}:{chunk_index}", e.g. "HD02846:0"
     id          TEXT PRIMARY KEY,
 
-    motion_id   TEXT NOT NULL REFERENCES motions(dok_id) ON DELETE CASCADE,
+    doc_id   TEXT NOT NULL REFERENCES documents(dok_id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
     text        TEXT NOT NULL,
     embedding   vector(384)
 );
 
-CREATE INDEX IF NOT EXISTS motion_chunks_motion_idx ON motion_chunks (motion_id);
-CREATE INDEX IF NOT EXISTS motion_chunks_embedding_idx ON motion_chunks
+CREATE INDEX IF NOT EXISTS document_chunks_doc_idx ON document_chunks (doc_id);
+CREATE INDEX IF NOT EXISTS document_chunks_embedding_idx ON document_chunks
     USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 -- ─────────────────────────────────────────
--- motion_yrkanden  (one condensed proposal per row + its own embedding)
+-- document_proposals  (one condensed proposal per row + its own embedding)
 -- ─────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS motion_yrkanden (
-    -- Key: "{dok_id}:{ordinal}", ordinal = 0-based position in the forslag array
+CREATE TABLE IF NOT EXISTS document_proposals (
+    -- Key: "{doc_id}:{ordinal}", ordinal = 0-based position in the proposals_raw array
     id           TEXT PRIMARY KEY,
-    dok_id       TEXT NOT NULL REFERENCES motions(dok_id) ON DELETE CASCADE,
+    doc_id       TEXT NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
     ordinal      INTEGER NOT NULL,
-    nummer       TEXT,
-    lydelse      TEXT NOT NULL,
-    utskottet    TEXT,        -- committee proposal (e.g. "Avslag")
-    kammaren     TEXT,        -- chamber decision (e.g. "Avslag"/"Bifall")
-    behandlas_i  TEXT,        -- committee report where handled
+    number       TEXT,
+    text      TEXT NOT NULL,
+    committee_recommendation    TEXT,        -- committee proposal (e.g. "Avslag")
+    chamber_decision     TEXT,        -- chamber decision (e.g. "Avslag"/"Bifall")
+    handled_in  TEXT,        -- committee report where handled
     embedding    vector(384)
 );
 
-CREATE INDEX IF NOT EXISTS motion_yrkanden_dok_idx ON motion_yrkanden (dok_id);
-CREATE INDEX IF NOT EXISTS motion_yrkanden_embedding_idx ON motion_yrkanden
+CREATE INDEX IF NOT EXISTS document_proposals_doc_idx ON document_proposals (dok_id);
+CREATE INDEX IF NOT EXISTS document_proposals_embedding_idx ON document_proposals
     USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 -- ─────────────────────────────────────────
@@ -335,15 +335,15 @@ CREATE INDEX IF NOT EXISTS auth_tokens_user_idx ON auth_tokens (user_id);
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id              UUID        PRIMARY KEY,
     session_type    TEXT        NOT NULL CHECK (session_type IN ('general', 'mp')),
-    intressent_id   TEXT        REFERENCES people(intressent_id),
-    initial_talk_id TEXT,
+    person_id   TEXT        REFERENCES people(person_id),
+    initial_speech_id TEXT,
     llm_messages    JSONB       NOT NULL DEFAULT '[]',
     turns           JSONB       NOT NULL DEFAULT '[]',
     focus_ids       TEXT[]      NOT NULL DEFAULT '{}',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_activity   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     -- Owned sessions (user_id set): all content lives encrypted in enc_payload
-    -- (llm_messages/turns/focus_ids AND intressent_id/initial_talk_id — which MP
+    -- (llm_messages/turns/focus_ids AND person_id/initial_speech_id — which MP
     -- you talked to is sensitive metadata); plaintext columns stay empty/NULL.
     -- No 7-day expiry for owned rows.
     user_id         UUID        REFERENCES users(id) ON DELETE CASCADE,
@@ -364,7 +364,7 @@ ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS enc_title TEXT;
 CREATE TABLE IF NOT EXISTS chat_snapshots (
     id              UUID        PRIMARY KEY,
     session_type    TEXT        NOT NULL CHECK (session_type IN ('general', 'mp')),
-    intressent_id   TEXT,       -- for MP chats: used to show name/party in the snapshot view
+    person_id   TEXT,       -- for MP chats: used to show name/party in the snapshot view
     turns           JSONB       NOT NULL DEFAULT '[]',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
@@ -374,7 +374,7 @@ CREATE TABLE IF NOT EXISTS chat_snapshots (
     -- compatibility shim rather than a clean break.
     llm_messages    JSONB,
     focus_ids       TEXT[]      DEFAULT '{}',
-    initial_talk_id TEXT,
+    initial_speech_id TEXT,
     last_activity   TIMESTAMPTZ DEFAULT NOW()
 );
 

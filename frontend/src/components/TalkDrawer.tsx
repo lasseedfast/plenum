@@ -18,13 +18,13 @@ function convertMarkdownToHtml(markdown: string): string {
  * Slide-in panel showing a full anförande — or a motion — without leaving the
  * chat. Mounted once at the app root; visibility is driven by TalkDrawerContext
  * so any component (chat answers, search cards, MP chat) can open it. A stored
- * id prefixed "motions/" opens the motion branch; anything else is a talk.
+ * id prefixed "documents/" opens the motion branch; anything else is a talk.
  */
 export function TalkDrawer() {
 	const { openTalkId, openTalk, closeTalk } = useTalkDrawer();
 
-	const isMotion = !!openTalkId && openTalkId.startsWith("motions/");
-	const bareId = openTalkId ? openTalkId.replace(/^motions\//, "") : null;
+	const isMotion = !!openTalkId && openTalkId.startsWith("documents/");
+	const bareId = openTalkId ? openTalkId.replace(/^documents\//, "") : null;
 
 	const { data: talk, isLoading, error } = useQuery({
 		queryKey: [isMotion ? "motion" : "talk", openTalkId],
@@ -43,7 +43,7 @@ export function TalkDrawer() {
 
 	if (!openTalkId) return null;
 
-	const imageUrl = talk?.person?.bild_url_192?.replace("http://", "https://");
+	const imageUrl = talk?.person?.image_url_medium?.replace("http://", "https://");
 	const summaryHtml = talk?.summary ? convertMarkdownToHtml(talk.summary) : null;
 	const previousId = !isMotion && talk?.navigation?.previous ? normalizeTalkId(talk.navigation.previous) : null;
 	const nextId = !isMotion && talk?.navigation?.next ? normalizeTalkId(talk.navigation.next) : null;
@@ -107,37 +107,37 @@ export function TalkDrawer() {
 								{imageUrl && (
 									<img
 										src={imageUrl}
-										alt={talk.talare}
+										alt={talk.speaker_name}
 										className="talk-view__speaker-photo talk-view__speaker-photo--enhanced"
 									/>
 								)}
 								<div className="talk-view__speaker-info">
 									<div className="talk-view__speaker-row">
-										{talk.person?.intressent_id ? (
-											<Link to={`/mp/${talk.person.intressent_id}`} className="talk-view__speaker-name-link">
-												<h1>{talk.talare}</h1>
+										{talk.person?.person_id ? (
+											<Link to={`/mp/${talk.person.person_id}`} className="talk-view__speaker-name-link">
+												<h1>{talk.speaker_name}</h1>
 											</Link>
 										) : (
-											<h1>{talk.talare}</h1>
+											<h1>{talk.speaker_name}</h1>
 										)}
-										<span className="party-chip" data-party={talk.parti ?? ""} style={{ "--party-color": `var(--party-${talk.parti ?? ""})` } as React.CSSProperties}>
-											{talk.parti}
+										<span className="party-chip" data-party={talk.party ?? ""} style={{ "--party-color": `var(--party-${talk.party ?? ""})` } as React.CSSProperties}>
+											{talk.party}
 										</span>
 									</div>
 									<div className="talk-view__speaker-meta">
-										{talk.person?.valkrets && (
-											<span className="talk-view__speaker-detail">{talk.person.valkrets}</span>
+										{talk.person?.constituency && (
+											<span className="talk-view__speaker-detail">{talk.person.constituency}</span>
 										)}
 										{talk.person?.status && (
 											<span className="talk-view__speaker-detail">{talk.person.status}</span>
 										)}
 									</div>
-									{talk.person?.intressent_id && (
+									{talk.person?.person_id && (
 										<Link
-											to={`/mp/${talk.person.intressent_id}?talk_id=${openTalkId}`}
+											to={`/mp/${talk.person.person_id}?speech_id=${openTalkId}`}
 											className="secondary-button talk-view__chat-btn"
 										>
-											Chatta med {talk.person?.tilltalsnamn || talk.talare}
+											Chatta med {talk.person?.first_name || talk.speaker_name}
 										</Link>
 									)}
 								</div>
@@ -145,18 +145,18 @@ export function TalkDrawer() {
 
 							<dl className="talk-view__meta-grid">
 								<dt>Datum</dt>
-								<dd>{talk.datum}</dd>
+								<dd>{talk.date}</dd>
 
 								<dt>Debattyp</dt>
-								<dd>{talk.kammaraktivitet}</dd>
+								<dd>{talk.activity_type}</dd>
 
 								<dt>Rubrik</dt>
-								<dd>{talk.avsnittsrubrik}</dd>
+								<dd>{talk.section_title}</dd>
 
-								{talk.titel && (
+								{talk.title && (
 									<>
 										<dt>Protokoll</dt>
-										<dd>{talk.titel}</dd>
+										<dd>{talk.title}</dd>
 									</>
 								)}
 							</dl>
@@ -170,7 +170,7 @@ export function TalkDrawer() {
 								</div>
 							)}
 
-							<div className="talk-view__content">{talk.anforandetext}</div>
+							<div className="talk-view__content">{talk.text}</div>
 
 							{(talk.url_session || talk.url_audio) && (
 								<div className="talk-view__link-group">

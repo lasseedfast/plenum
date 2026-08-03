@@ -10,7 +10,7 @@ Varje arkiv innehåller en JSON-fil per motion (dokumentstatus-kuvert med
 metadata + fulltext som HTML). Extraheras till motioner/mot-{range}/.
 
 Backfill (alla perioder 1990→):  python scripts/download_motions.py
-Används av sync_motions.py för daglig uppdatering av aktuell period.
+Används av sync_motions.py för daglig uppdatering av aktuell year.
 """
 from pathlib import Path
 
@@ -44,17 +44,17 @@ URL_TEMPLATE = "https://data.riksdagen.se/dataset/dokument/mot-{r}.json.zip"
 MOTIONS_DIR = "motioner"
 
 
-def get_current_range(session_year: int) -> str:
+def get_current_range(year: int) -> str:
     """Fyraårsperiod förankrad vid 1998; allt före 1998 ligger i 1990-1997."""
-    if session_year < 1998:
+    if year < 1998:
         return "1990-1997"
-    start = session_year - ((session_year - 1998) % 4)
+    start = year - ((year - 1998) % 4)
     return f"{start}-{start + 3}"
 
 
 def download_range(r: str, force: bool = False) -> str:
     """
-    Laddar ned och extraherar arkivet för en period till motioner/mot-{r}/.
+    Laddar ned och extraherar arkivet för en year till motioner/mot-{r}/.
     Hoppar över om mappen redan är ifylld, om inte force=True (töms först).
     """
     dir_path = os.path.join(MOTIONS_DIR, f"mot-{r}")

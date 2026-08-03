@@ -22,10 +22,10 @@ function SourceList({ sources }: { sources: ChatSource[] }) {
                     {sources.map((src, i) => (
                         <div key={`${src._id}-${i}`} className="snapshot-sources__item">
                             <div className="snapshot-sources__meta">
-                                {src.intressent_id && (
+                                {src.person_id && (
                                     <img
                                         className="snapshot-sources__avatar"
-                                        src={getMpPhotoUrl(src.intressent_id)}
+                                        src={getMpPhotoUrl(src.person_id)}
                                         alt=""
                                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                                     />
@@ -40,8 +40,8 @@ function SourceList({ sources }: { sources: ChatSource[] }) {
                                     {src.snippet.replace(/\*\*(.*?)\*\*/g, "$1")}
                                 </p>
                             )}
-                            {src.debateurl && (
-                                <a href={src.debateurl} className="snapshot-sources__link" target="_blank" rel="noreferrer">
+                            {src.url_video && (
+                                <a href={src.url_video} className="snapshot-sources__link" target="_blank" rel="noreferrer">
                                     Öppna anförande ↗
                                 </a>
                             )}
@@ -53,20 +53,20 @@ function SourceList({ sources }: { sources: ChatSource[] }) {
     );
 }
 
-function MpHeader({ intressent_id }: { intressent_id: string }) {
+function MpHeader({ person_id }: { person_id: string }) {
     const { data: person } = useQuery({
-        queryKey: ["person", intressent_id],
-        queryFn: () => fetchPerson(intressent_id),
+        queryKey: ["person", person_id],
+        queryFn: () => fetchPerson(person_id),
     });
     if (!person) return null;
-    const photoUrl = person.bild_url_192?.replace("http://", "https://") || getMpPhotoUrl(intressent_id);
+    const photoUrl = person.image_url_medium?.replace("http://", "https://") || getMpPhotoUrl(person_id);
     return (
         <div className="snapshot-mp-header panel">
-            <img className="snapshot-mp-header__avatar" src={photoUrl} alt={person.namn}
+            <img className="snapshot-mp-header__avatar" src={photoUrl} alt={person.name}
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
             <div>
-                <strong>{person.namn}</strong>
-                {person.parti && <span className="party-chip" data-party={person.parti} style={{ "--party-color": `var(--party-${person.parti ?? ""})` } as React.CSSProperties}>{person.parti}</span>}
+                <strong>{person.name}</strong>
+                {person.party && <span className="party-chip" data-party={person.party} style={{ "--party-color": `var(--party-${person.party ?? ""})` } as React.CSSProperties}>{person.party}</span>}
                 <p className="snapshot-mp-header__disclaimer">
                     Fryst konversation med digital assistent – inte den riktiga personen.
                 </p>
@@ -131,8 +131,8 @@ export function ChatSnapshotView() {
                     <div className="snapshot-view">
                         <div className="snapshot-badge">Fryst konversation — skrivskyddad</div>
 
-                        {snapshot.session_type === "mp" && snapshot.intressent_id && (
-                            <MpHeader intressent_id={snapshot.intressent_id} />
+                        {snapshot.session_type === "mp" && snapshot.person_id && (
+                            <MpHeader person_id={snapshot.person_id} />
                         )}
 
                         <div className="snapshot-turns">

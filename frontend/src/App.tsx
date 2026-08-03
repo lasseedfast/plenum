@@ -198,7 +198,7 @@ function SearchView() {
 			if (partyFilter.size && !partyFilter.has(hitParty)) return false;
 
 			const hitSpeaker = (hit.speaker ?? "").trim().toLowerCase();
-			const hitSpeakerId = hit.intressent_id?.trim() ?? null;
+			const hitSpeakerId = hit.person_id?.trim() ?? null;
 
 			if (selectedSpeakerIds.length > 0 && (!hitSpeakerId || !selectedSpeakerIds.includes(hitSpeakerId))) return false;
 			if (selectedSpeakerIds.length === 0 && normalizedSpeaker && hitSpeaker !== normalizedSpeaker) return false;

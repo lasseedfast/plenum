@@ -27,7 +27,7 @@ class ResearchLead(BaseModel):
     """A next step worth taking: a new search, a person, or a debate to read."""
 
     kind: Literal["search", "person", "debate"]
-    target: str = Field(..., description="Search query, intressent_id, or debate id")
+    target: str = Field(..., description="Search query, person_id, or debate id")
     lead: str = Field(default="", description="What to do and why, in plain Swedish")
     # Display name for person/debate targets, resolved from the seen-map.
     label: Optional[str] = None
@@ -56,7 +56,7 @@ class BoardSeeds(BaseModel):
     title: str = Field(
         ...,
         description=("Descriptive headline for the whole exploration: 3-8 ordinary Swedish "
-                     "words, max 60 characters, no coined compounds, no trailing period"),
+                     "words, max 60 characters, no coined compounds, no trailing year"),
     )
     intro: str = ""
     threads: List[ThreadSeed] = Field(default_factory=list)

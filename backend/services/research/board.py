@@ -440,7 +440,7 @@ def _search_material(query: str, seen_ids: set, *,
     ``seen_ids`` are skipped (and new ids added), so repeated calls across
     scout rounds accumulate without duplication.
 
-    Speeches come first and are formatted party-first (``[parti] Talare: …``)
+    Speeches come first and are formatted party-first (``[party] Talare: …``)
     so the salient structure the LLM sees is *who said what*, not *when* — this
     is what steers discovery toward party/issue threads instead of comparing
     individual debates by date. ``debates_limit=0`` skips the debate summaries
@@ -454,14 +454,14 @@ def _search_material(query: str, seen_ids: set, *,
         arango_search(query=query, return_snippets=True, limit=talks_limit)
         structured = _tool_structured_result.get()
         if isinstance(structured, SearchHitsResult) and structured.response.hits:
-            lines = ["ANFÖRANDEN (parti — talare: utdrag [id]):"]
+            lines = ["ANFÖRANDEN (party — speaker_name: utdrag [id]):"]
             for h in structured.response.hits:
                 if h.key in seen_ids:
                     continue
                 seen_ids.add(h.key)
                 snip = (h.snippet or h.text or "").replace("\n", " ")[:260]
-                party = h.party or "okänt parti"
-                who = h.speaker or "Okänd talare"
+                party = h.party or "okänt party"
+                who = h.speaker or "Okänd speaker_name"
                 dt = f", {h.date}" if h.date else ""
                 lines.append(f"- [{party}] {who}: {snip} [{h.key}{dt}]")
             if len(lines) > 1:

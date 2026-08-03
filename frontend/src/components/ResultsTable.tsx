@@ -23,15 +23,15 @@ function exportToCsv(results: TalkHit[], filename: string) {
 		if (!confirmed) return;
 		results = results.slice(0, EXPORT_LIMIT);
 	}
-	const headers = ["talare", "parti", "anforandetext", "datum", "titel", "kammaraktivitet", "rel_dok_id"];
+	const headers = ["speaker_name", "party", "text", "date", "title", "activity_type", "related_doc_id"];
 	const rows = results.map((r) => [
 		r.speaker ?? "",
 		r.party ?? "",
 		r.text ?? "",
 		r.date ?? "",
-		r.titel ?? "",
-		r.kammaraktivitet ?? "",
-		r.rel_dok_id ?? "",
+		r.title ?? "",
+		r.activity_type ?? "",
+		r.related_doc_id ?? "",
 	]);
 	const csvContent = [headers, ...rows]
 		.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
@@ -73,8 +73,8 @@ export function ResultsTable({ results, exportResults, onLoadMore, nextBatchSize
 				</thead>
 				<tbody>
 					{results.map((hit) => {
-						// Always use _id, and strip "talks/" prefix for routing
-						const talkKey = hit._id?.startsWith("talks/") ? hit._id.slice(6) : hit._id;
+						// Always use _id, and strip "speeches/" prefix for routing
+						const talkKey = hit._id?.startsWith("speeches/") ? hit._id.slice(6) : hit._id;
 						if (!talkKey) {
 							console.warn("Result hit missing _id:", hit);
 						}
@@ -108,9 +108,9 @@ export function ResultsTable({ results, exportResults, onLoadMore, nextBatchSize
 							>
 								<td>{hit.date}</td>
 								<td>
-									{hit.intressent_id ? (
+									{hit.person_id ? (
 										<Link
-											to={`/mp/${hit.intressent_id}`}
+											to={`/mp/${hit.person_id}`}
 											className="results-table__speaker-link"
 											onClick={stopPropagation}
 										>

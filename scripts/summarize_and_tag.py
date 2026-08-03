@@ -1,14 +1,14 @@
 """
-Combined summarization + tagging pipeline for all riksdag talks.
+Combined summarization + tagging pipeline for all riksdag speeches.
 
-Reads talks that are missing a summary OR tags from PostgreSQL, calls the
+Reads speeches that are missing a summary OR tags from PostgreSQL, calls the
 vLLM server for each one using a multi-turn chat (summary → arguments → tags),
 then writes the results back.  Designed to run in the background for days:
 
     nohup python scripts/summarize_and_tag.py >> logs/summarize_and_tag.log 2>&1 &
     echo $! > logs/summarize_and_tag.pid
 
-Resumable: only processes talks where summary IS NULL OR tags IS NULL.
+Resumable: only processes speeches where summary IS NULL OR tags IS NULL.
 Concurrency: 4 worker threads, each with its own LLM instance.
 
 Multi-turn strategy: The speech is sent once and cached by vLLM. Three
@@ -127,19 +127,19 @@ TAGS_INSTRUCTION = (
 # Context fetching (for replies)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def fetch_reply_context(debate: str, anforande_nummer: int) -> list[dict]:
+def fetch_reply_context(debate: str, sequence: int) -> list[dict]:
     """
-    For a reply, fetch up to two context talks (summaries only):
-    1. The debate opener (anforande_nummer == 1)
-    2. The immediately preceding talk (anforande_nummer - 1)
+    For a reply, fetch up to two context speeches (summaries only):
+    1. The debate opener (sequence == 1)
+    2. The immediately preceding talk (sequence - 1)
     """
     context = []
 
     openers = pg.execute(
         """
-        SELECT talare, parti, anforande_nummer, summary
-        FROM talks
-        WHERE debate = %s AND anforande_nummer = 1
+        SELECT speaker_name, party, sequence, summary
+        FROM speeches
+        WHERE debate = %s AND sequence = 1
         LIMIT 1
         """,
         (debate,),
@@ -148,18 +148,18 @@ def fetch_reply_context(debate: str, anforande_nummer: int) -> list[dict]:
 
     prevs = pg.execute(
         """
-        SELECT talare, parti, anforande_nummer, summary
-        FROM talks
-        WHERE debate = %s AND anforande_nummer = %s
+        SELECT speaker_name, party, sequence, summary
+        FROM speeches
+        WHERE debate = %s AND sequence = %s
         LIMIT 1
         """,
-        (debate, anforande_nummer - 1),
+        (debate, sequence - 1),
     )
     prev = prevs[0] if prevs else None
 
     if opener:
         context.append(opener)
-    if prev and (not opener or prev.get("anforande_nummer") != opener.get("anforande_nummer")):
+    if prev and (not opener or prev.get("sequence") != opener.get("sequence")):
         context.append(prev)
 
     return context
@@ -180,32 +180,32 @@ def build_speech_message(talk: dict) -> str:
     """Build the user message that presents the speech to analyse."""
     lines = []
 
-    avsnittsrubrik = (talk.get("avsnittsrubrik") or "").strip()
-    if avsnittsrubrik:
-        lines.append(f"Avsnittsrubrik: {avsnittsrubrik}")
+    section_title = (talk.get("section_title") or "").strip()
+    if section_title:
+        lines.append(f"Avsnittsrubrik: {section_title}")
 
-    talare = (talk.get("talare") or "Okänd").strip()
-    parti = (talk.get("parti") or "").strip()
-    lines.append(f"Talare: {talare} ({parti})")
+    speaker_name = (talk.get("speaker_name") or "Okänd").strip()
+    party = (talk.get("party") or "").strip()
+    lines.append(f"Talare: {speaker_name} ({party})")
 
-    if talk.get("replik"):
+    if talk.get("is_reply"):
         debate = talk.get("debate")
-        nr = talk.get("anforande_nummer")
+        nr = talk.get("sequence")
         if debate and nr:
             ctx_talks = fetch_reply_context(debate, nr)
             if ctx_talks:
                 lines.append(
-                    "\nDetta är en replik. Nedan följer korta sammanfattningar av de "
+                    "\nDetta är en is_reply. Nedan följer korta sammanfattningar av de "
                     "föregående anförandena som repliken sannolikt syftar på:"
                 )
                 for ctx in ctx_talks:
-                    ctx_talare = ctx.get("talare", "Okänd")
-                    ctx_parti = ctx.get("parti", "")
+                    ctx_talare = ctx.get("speaker_name", "Okänd")
+                    ctx_parti = ctx.get("party", "")
                     text = get_context_text(ctx)
                     lines.append(f"- {ctx_talare} ({ctx_parti}): {text}")
 
     lines.append("\nAnförande:")
-    lines.append(talk["anforandetext"])
+    lines.append(talk["text"])
 
     return "\n".join(lines)
 
@@ -466,7 +466,7 @@ def process_talk(talk: dict) -> bool:
         embedding = pg.make_embeddings([summary])[0] if (summary and talk.get("summary") is None) else None
         pg.execute_void(
             """
-            UPDATE talks
+            UPDATE speeches
             SET summary           = CASE WHEN summary IS NOT NULL THEN summary ELSE %s END,
                 tags              = CASE WHEN array_length(tags, 1) > 0 THEN tags ELSE %s END,
                 arguments         = CASE WHEN array_length(arguments, 1) > 0 THEN arguments ELSE %s END,
@@ -487,25 +487,25 @@ def process_talk(talk: dict) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 WORKERS = 4
-BATCH_SIZE = 200  # fetch this many talks at a time before re-querying
+BATCH_SIZE = 200  # fetch this many speeches at a time before re-querying
 
 
 def fetch_batch() -> list[dict]:
     return pg.execute(
         """
-        SELECT id, anforandetext, replik, debate, anforande_nummer,
-               avsnittsrubrik, talare, parti,
+        SELECT id, text, is_reply, debate, sequence,
+               section_title, speaker_name, party,
                summary, tags, arguments
-        FROM talks
+        FROM speeches
         WHERE (
             summary IS NULL
             OR tags IS NULL
             OR arguments IS NULL
         )
           AND tagging_failed IS NOT TRUE
-          AND anforandetext IS NOT NULL
-          AND LENGTH(anforandetext) >= 200
-        ORDER BY datum DESC NULLS LAST
+          AND text IS NOT NULL
+          AND LENGTH(text) >= 200
+        ORDER BY date DESC NULLS LAST
         LIMIT %s
         """,
         (BATCH_SIZE,),
@@ -513,10 +513,10 @@ def fetch_batch() -> list[dict]:
 
 
 def ensure_schema():
-    """Add pipeline columns to talks if they don't already exist."""
+    """Add pipeline columns to speeches if they don't already exist."""
     for ddl in [
-        "ALTER TABLE talks ADD COLUMN IF NOT EXISTS tagging_failed BOOLEAN DEFAULT FALSE",
-        "ALTER TABLE talks ADD COLUMN IF NOT EXISTS arguments TEXT[]",
+        "ALTER TABLE speeches ADD COLUMN IF NOT EXISTS tagging_failed BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE speeches ADD COLUMN IF NOT EXISTS arguments TEXT[]",
     ]:
         try:
             pg.execute_void(ddl)
@@ -536,7 +536,7 @@ def main():
     while True:
         batch = fetch_batch()
         if not batch:
-            logger.info("No more talks to process. All done.")
+            logger.info("No more speeches to process. All done.")
             break
 
         batch_ok = 0

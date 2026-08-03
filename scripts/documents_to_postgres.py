@@ -4,7 +4,7 @@ Läser in anföranden från JSON-filer till PostgreSQL.
 Ersätter scripts/documents_to_arango.py.
 
 Används av sync_talks.py (update_folder) och kan köras direkt för att
-(om)ladda alla mappar i talks/:
+(om)ladda alla mappar i speeches/:
 
     python scripts/documents_to_postgres.py
 """
@@ -59,29 +59,29 @@ def process_folder(folder_path: str, already_processed: set[str] = frozenset()) 
             with open(os.path.join(folder_path, file), "r", encoding="utf-8-sig") as f:
                 data = json.load(f)
             doc = data["anforande"]
-            dok_id = doc.get("dok_id", "")
-            anforande_nummer = doc.get("anforande_nummer", "")
-            talk_id = f"{dok_id}-{anforande_nummer}"  # unique per speech, e.g. "GH09116-16"
-            if talk_id in already_processed:
+            source_doc_id = doc.get("dok_id", "")
+            sequence = doc.get("sequence", "")
+            speech_id = f"{source_doc_id}-{sequence}"  # unique per speech, e.g. "GH09116-16"
+            if speech_id in already_processed:
                 continue
-            doc["period"] = int(doc.get("dok_rm", "0000")[:4])
+            doc["year"] = int(doc.get("dok_rm", "0000")[:4])
             doc.pop("dok_rm", None)
-            doc["anforandetext"] = clean_text(doc.get("anforandetext", ""))
-            doc["talare"] = clean_speaker_name(doc.get("talare", ""))
-            doc["id"] = talk_id
-            doc["dok_id"] = dok_id
-            doc["anforande_id"] = doc.get("anforande_id", "")  # UUID, kept for reference
-            doc["datum"] = _parse_date(doc.get("dok_datum", ""))
-            doc["dok_datum"] = doc.get("dok_datum", "")
-            doc["titel"] = doc.get("dok_titel", "")
+            doc["text"] = clean_text(doc.get("text", ""))
+            doc["speaker_name"] = clean_speaker_name(doc.get("speaker_name", ""))
+            doc["id"] = speech_id
+            doc["dok_id"] = source_doc_id
+            doc["source_speech_id"] = doc.get("source_speech_id", "")  # UUID, kept for reference
+            doc["date"] = _parse_date(doc.get("source_datetime", ""))
+            doc["source_datetime"] = doc.get("source_datetime", "")
+            doc["title"] = doc.get("dok_titel", "")
             doc.pop("dok_titel", None)
-            doc["anforande_nummer"] = int(anforande_nummer) if anforande_nummer else 0
-            doc["hangar_id"] = doc.get("dok_hangar_id", "")
+            doc["sequence"] = int(sequence) if sequence else 0
+            doc["source_record_id"] = doc.get("dok_hangar_id", "")
             doc.pop("dok_hangar_id", None)
-            doc["replik"] = doc.get("replik", "N") == "Y"
-            doc.pop("systemdatum", None)
+            doc["is_reply"] = doc.get("is_reply", "N") == "Y"
+            doc.pop("source_updated_at", None)
             doc.pop("underrubrik", None)
-            year = doc.get("period") or (int(doc["datum"][:4]) if doc.get("datum") else None)
+            year = doc.get("year") or (int(doc["date"][:4]) if doc.get("date") else None)
             doc["year"] = year
             docs.append(doc)
         except (json.JSONDecodeError, KeyError, ValueError) as e:
@@ -90,14 +90,14 @@ def process_folder(folder_path: str, already_processed: set[str] = frozenset()) 
 
 
 _UPSERT_SQL = """
-INSERT INTO talks (
-    id, anforande_id, dok_id,
-    anforandetext, avsnittsrubrik,
-    anforande_nummer, kammaraktivitet,
-    talare, parti, intressent_id,
-    datum, dok_datum, year, period,
-    rel_dok_id, dok_nummer, hangar_id, titel,
-    replik
+INSERT INTO speeches (
+    id, source_speech_id, source_doc_id,
+    text, section_title,
+    sequence, activity_type,
+    speaker_name, party, person_id,
+    date, source_datetime, year, year,
+    related_doc_id, source_doc_number, source_record_id, title,
+    is_reply
 ) VALUES %s
 ON CONFLICT (id) DO NOTHING
 """
@@ -105,25 +105,25 @@ ON CONFLICT (id) DO NOTHING
 
 def _doc_to_row(doc: dict) -> tuple:
     return (
-        doc.get("id"),           # anforande_id UUID — primary key
-        doc.get("anforande_id"), # same value, kept for reference
+        doc.get("id"),           # source_speech_id UUID — primary key
+        doc.get("source_speech_id"), # same value, kept for reference
         doc.get("dok_id"),       # debate/protocol document id
-        doc.get("anforandetext"),
-        doc.get("avsnittsrubrik"),
-        doc.get("anforande_nummer"),
-        doc.get("kammaraktivitet"),
-        doc.get("talare"),
-        doc.get("parti"),
-        doc.get("intressent_id"),
-        doc.get("datum"),
-        doc.get("dok_datum"),
+        doc.get("text"),
+        doc.get("section_title"),
+        doc.get("sequence"),
+        doc.get("activity_type"),
+        doc.get("speaker_name"),
+        doc.get("party"),
+        doc.get("person_id"),
+        doc.get("date"),
+        doc.get("source_datetime"),
         doc.get("year"),
-        doc.get("period"),
-        doc.get("rel_dok_id"),
-        doc.get("dok_nummer"),
-        doc.get("hangar_id"),
-        doc.get("titel"),
-        doc.get("replik", False),
+        doc.get("year"),
+        doc.get("related_doc_id"),
+        doc.get("source_doc_number"),
+        doc.get("source_record_id"),
+        doc.get("title"),
+        doc.get("is_reply", False),
     )
 
 
@@ -138,10 +138,10 @@ def insert_docs(docs: list[dict]) -> None:
 def update_folder(path: str, already_processed: set[str] = None) -> int:
     """
     Upsert talk documents from JSON files in path into PostgreSQL.
-    Returns the number of new talks inserted.
+    Returns the number of new speeches inserted.
     """
     if already_processed is None:
-        rows = pg.execute("SELECT id FROM talks")
+        rows = pg.execute("SELECT id FROM speeches")
         already_processed = {row["id"] for row in rows}
 
     docs = process_folder(path, already_processed)
@@ -150,11 +150,11 @@ def update_folder(path: str, already_processed: set[str] = None) -> int:
 
 
 if __name__ == "__main__":
-    # Load all folders in talks/ into PostgreSQL
-    existing = {row["id"] for row in pg.execute("SELECT id FROM talks")}
+    # Load all folders in speeches/ into PostgreSQL
+    existing = {row["id"] for row in pg.execute("SELECT id FROM speeches")}
     total = 0
-    for folder in sorted(os.listdir("talks")):
-        path = str(bootstrap.DATA_DIR / 'talks' / folder)
+    for folder in sorted(os.listdir("speeches")):
+        path = str(bootstrap.DATA_DIR / 'speeches' / folder)
         if not os.path.isdir(path):
             continue
         print(f"Processing {folder} …", end=" ", flush=True)
@@ -164,4 +164,4 @@ if __name__ == "__main__":
         existing |= new_ids
         total += len(new_ids)
         print(f"{len(new_ids)} inserted")
-    print(f"\nTotal: {total} new talks inserted")
+    print(f"\nTotal: {total} new speeches inserted")

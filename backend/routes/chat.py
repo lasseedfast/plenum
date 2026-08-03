@@ -31,15 +31,15 @@ class ChatSource(BaseModel):
     _id: str
     chunk_index: int
     heading: str | None
-    debateurl: str | None
+    url_video: str | None
     snippet: str
     speaker: str | None = None
     party: str | None = None
-    intressent_id: str | None = None
+    person_id: str | None = None
     date: str | None = None
 
 class PersonRef(BaseModel):
-    intressent_id: str
+    person_id: str
     name: str
     party: str
 
@@ -107,18 +107,18 @@ def chat_endpoint(payload: ChatRequest, request: Request) -> ChatResponse:
             _id=src.get("_id", ""),
             chunk_index=src.get("chunk_index", 0),
             heading=src.get("heading"),
-            debateurl=src.get("debateurl"),
+            url_video=src.get("url_video"),
             snippet=src.get("snippet", ""),
             speaker=src.get("speaker"),
             party=src.get("party"),
-            intressent_id=src.get("intressent_id"),
+            person_id=src.get("person_id"),
             date=src.get("date"),
         )
         for src in raw_sources
     ]
     persons = [
         PersonRef(**p) for p in result.get("persons", [])
-        if isinstance(p, dict) and "intressent_id" in p and "name" in p
+        if isinstance(p, dict) and "person_id" in p and "name" in p
     ]
     warnings = [
         AttributionWarning(**w) for w in result.get("attribution_warnings", [])
@@ -281,39 +281,39 @@ class Uppdrag(BaseModel):
 
 
 class PersonDetail(BaseModel):
-    intressent_id: str
-    namn: str
-    tilltalsnamn: str | None = None
-    efternamn: str | None = None
-    parti: str | None = None
-    valkrets: str | None = None
+    person_id: str
+    name: str
+    first_name: str | None = None
+    last_name: str | None = None
+    party: str | None = None
+    constituency: str | None = None
     status: str | None = None
-    bild_url_192: str | None = None
-    fodd_ar: str | None = None
+    image_url_medium: str | None = None
+    birth_year: str | None = None
     uppdrag: list[Uppdrag] | None = None
 
 
-@router.get("/person/{intressent_id}", response_model=PersonDetail)
-def get_person(intressent_id: str) -> PersonDetail:
+@router.get("/person/{person_id}", response_model=PersonDetail)
+def get_person(person_id: str) -> PersonDetail:
     """Fetch basic person data for a Riksdag member."""
     rows = pg.execute(
-        """SELECT intressent_id, namn, tilltalsnamn, efternamn, parti, valkrets,
-                  status, bild_url_192, fodd_ar, personuppdrag
-           FROM people WHERE intressent_id = %s""",
-        (intressent_id,)
+        """SELECT person_id, name, first_name, last_name, party, constituency,
+                  status, image_url_medium, birth_year, assignments
+           FROM people WHERE person_id = %s""",
+        (person_id,)
     )
     if not rows:
         raise HTTPException(status_code=404, detail="Person not found")
     row = dict(rows[0])
-    raw = row.pop("personuppdrag", None) or {}
+    raw = row.pop("assignments", None) or {}
     uppdrag_list = raw.get("uppdrag", []) if isinstance(raw, dict) else []
     return PersonDetail(**row, uppdrag=[Uppdrag(**u) for u in uppdrag_list])
 
 
 class MpChatRequest(BaseModel):
     messages: List[ChatMessage]
-    intressent_id: str
-    initial_talk_id: Optional[str] = None
+    person_id: str
+    initial_speech_id: Optional[str] = None
     provider_override: ProviderOverride | None = Field(default=None, description="Optional user-supplied provider.")
 
 
@@ -327,8 +327,8 @@ def mp_chat_stream_endpoint(payload: MpChatRequest) -> StreamingResponse:
 
     try:
         mp_service = MpChatService(
-            intressent_id=payload.intressent_id,
-            initial_talk_id=payload.initial_talk_id,
+            person_id=payload.person_id,
+            initial_speech_id=payload.initial_speech_id,
             provider_override=payload.provider_override,
         )
     except ValueError as e:

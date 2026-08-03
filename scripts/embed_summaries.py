@@ -1,8 +1,8 @@
 """
-Backfill summary_embedding for all talks that have a summary but no embedding yet.
+Backfill summary_embedding for all speeches that have a summary but no embedding yet.
 
 Run once after applying the migration add_summary_embedding.sql, and again
-whenever needed to catch any talks the summarize_and_tag script missed.
+whenever needed to catch any speeches the summarize_and_tag script missed.
 
 Usage:
     python scripts/embed_summaries.py
@@ -32,14 +32,14 @@ def embed_summaries() -> int:
     missing = pg.execute(
         """
         SELECT id, summary
-        FROM talks
+        FROM speeches
         WHERE summary IS NOT NULL AND summary != ''
           AND summary_embedding IS NULL
         ORDER BY id
         """
     )
     total = len(missing)
-    logger.info(f"Found {total} talks needing summary embeddings")
+    logger.info(f"Found {total} speeches needing summary embeddings")
 
     if not total:
         return 0
@@ -51,7 +51,7 @@ def embed_summaries() -> int:
         embeddings = pg.make_embeddings(texts)
         params = [(emb, row["id"]) for row, emb in zip(batch, embeddings)]
         pg.execute_many(
-            "UPDATE talks SET summary_embedding = %s WHERE id = %s",
+            "UPDATE speeches SET summary_embedding = %s WHERE id = %s",
             params,
         )
         processed += len(batch)

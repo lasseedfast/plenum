@@ -16,7 +16,7 @@ export const getMpPhotoUrl = (personId: string): string =>
 /**
  * Converts Markdown to HTML and replaces [1], [2], ... with <sup> citations.
  * When a sources array is provided, each citation becomes a clickable link to
- * /talk/{id} (anföranden) or /motion/{id} (motioner, id prefixed "motions/").
+ * /talk/{id} (anföranden) or /motion/{id} (motioner, id prefixed "documents/").
  * Only processes text outside of <a>, <code>, <pre>, <script>, <style>, and <sup> tags.
  */
 export const convertMarkdownToHtml = (markdown: string, sources?: ChatSource[]): string => {
@@ -25,10 +25,10 @@ export const convertMarkdownToHtml = (markdown: string, sources?: ChatSource[]):
     if (sources) {
         sources.forEach((src, i) => {
             const raw = src._id ?? "";
-            if (raw.startsWith("motions/")) {
-                talkPathByIndex.set(i + 1, `/motion/${raw.slice("motions/".length)}`);
+            if (raw.startsWith("documents/")) {
+                talkPathByIndex.set(i + 1, `/motion/${raw.slice("documents/".length)}`);
             } else {
-                const key = raw.startsWith("talks/") ? raw.slice(6) : raw;
+                const key = raw.startsWith("speeches/") ? raw.slice(6) : raw;
                 if (key) talkPathByIndex.set(i + 1, `/talk/${key}`);
             }
         });

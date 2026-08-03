@@ -5,7 +5,7 @@ import { decryptJson } from "../crypto";
 import { useAuth } from "../context/AuthContext";
 import type { EncTitlePayload, MyChatRow } from "../types";
 
-type DecryptedRow = MyChatRow & { title: string; intressent_id?: string | null };
+type DecryptedRow = MyChatRow & { title: string; person_id?: string | null };
 
 /** /chats — the logged-in user's saved conversations; titles decrypt locally. */
 export default function MyChatsView() {
@@ -21,17 +21,17 @@ export default function MyChatsView() {
 			return Promise.all(
 				rows.map(async (row) => {
 					let title = "Konversation";
-					let intressent_id: string | null | undefined;
+					let person_id: string | null | undefined;
 					if (row.enc_title && dek) {
 						try {
 							const decoded = await decryptJson<EncTitlePayload>(dek, row.enc_title);
 							title = decoded.title || title;
-							intressent_id = decoded.intressent_id;
+							person_id = decoded.person_id;
 						} catch {
 							title = "Kunde inte avkryptera";
 						}
 					}
-					return { ...row, title, intressent_id };
+					return { ...row, title, person_id };
 				}),
 			);
 		},
@@ -43,8 +43,8 @@ export default function MyChatsView() {
 	});
 
 	const chatUrl = (row: DecryptedRow) =>
-		row.session_type === "mp" && row.intressent_id
-			? `/mp/${row.intressent_id}?session=${row.id}`
+		row.session_type === "mp" && row.person_id
+			? `/mp/${row.person_id}?session=${row.id}`
 			: `/chat/${row.id}`;
 
 	if (!user) {
@@ -81,7 +81,7 @@ export default function MyChatsView() {
 								<tr>
 									<th>Konversation</th>
 									<th>Typ</th>
-									<th>Senast aktiv</th>
+									<th>Senast active</th>
 									<th />
 								</tr>
 							</thead>

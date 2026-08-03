@@ -10,7 +10,7 @@
  *   chat:     "…ökade stödet [1]."      → "…ökade stödet [[1]](https://riksdagen.se/…)."
  *   research: "…ökade stödet [källa:H40911]." → same shape, numbered by first appearance
  *
- * Chat sources come with `debateurl` (riksdagen.se) and are linked there;
+ * Chat sources come with `url_video` (riksdagen.se) and are linked there;
  * research findings only carry the bare talk id, so those link into this app
  * (`/talk/<id>`), which is where the citation chip points on screen too.
  *
@@ -68,12 +68,12 @@ function mdText(text: string): string {
 	return text.replace(/([[\]])/g, "\\$1");
 }
 
-/** Absolute in-app url for a source id — "talks/H40911", "motions/HA02123" or bare. */
+/** Absolute in-app url for a source id — "speeches/H40911", "documents/HA02123" or bare. */
 function appUrl(rawId: string | null | undefined): string | null {
 	if (!rawId) return null;
 	const origin = typeof window !== "undefined" ? window.location.origin : "";
-	if (rawId.startsWith("motions/")) return `${origin}/motion/${rawId.slice("motions/".length)}`;
-	const bare = rawId.startsWith("talks/") ? rawId.slice("talks/".length) : rawId;
+	if (rawId.startsWith("documents/")) return `${origin}/motion/${rawId.slice("documents/".length)}`;
+	const bare = rawId.startsWith("speeches/") ? rawId.slice("speeches/".length) : rawId;
 	return bare ? `${origin}/talk/${bare}` : null;
 }
 
@@ -141,7 +141,7 @@ export function chatAnswerToMarkdown(answer: string, sources?: ChatSource[]): st
 		return {
 			n: i + 1,
 			label,
-			url: src.debateurl || appUrl(src._id),
+			url: src.url_video || appUrl(src._id),
 			note: hasPerson ? src.heading : null,
 		};
 	});

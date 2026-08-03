@@ -73,7 +73,7 @@ _DEDUP_HINTS = {
     "arango_search": "Vary the keywords/filters, or try vector_search for semantic matching, or database_query for counts.",
     "vector_search": "Rephrase the query as a content statement, or use arango_search with metadata filters.",
     "vector_search_debates": "Pick a debate from the previous result and call fetch_debate, or vary the query.",
-    "fetch_debate": "You already have this debate's talks — read specific talks with read_documents_for instead.",
+    "fetch_debate": "You already have this debate's speeches — read specific speeches with read_documents_for instead.",
     "fetch_documents": "You already have these documents. Use read_documents_for with a focused question if you need their substance.",
     "read_documents_for": "Ask a DIFFERENT question or read different documents.",
     "database_query": "The result will not change — use the rows you already received.",
@@ -439,7 +439,7 @@ class ChatService:
             If it is in Swedish, make sure to understand it correctly.
             If you need to clarify the question, ask the user to clarify."""
         if ids_part:
-            question += f"""\nAs the user is interested in a certain person or persons, you can use the following list of intressent_id:s to find relevant speeches:\n{ids_part}."""
+            question += f"""\nAs the user is interested in a certain person or persons, you can use the following list of person_id:s to find relevant speeches:\n{ids_part}."""
         if not question:
             raise ValueError("Conversation must contain at least one user message.")
         print_yellow(
@@ -1099,36 +1099,36 @@ class ChatService:
         collected_sources: List[ChatSource],
         collected_persons: Dict[str, Dict],
     ) -> List[str]:
-        """Collect sources and persons from a HitsResponse. Returns list of intressent_ids.
+        """Collect sources and persons from a HitsResponse. Returns list of person_ids.
 
         Debate-level hits (from `vector_search_debates`) are skipped — they are
         navigation aids, not citable sources.
         """
-        intressent_ids: List[str] = []
+        person_ids: List[str] = []
         for hit in hits_response.hits:
             meta = hit.metadata or {}
             if meta.get("kind") == "debate" or (hit.id or "").startswith("debates/"):
                 continue
-            iid = meta.get("intressent_id")
+            iid = meta.get("person_id")
             collected_sources.append(
                 {
                     "_id": hit.id or "",
                     "chunk_index": meta.get("chunk_index", -1),
-                    "heading": meta.get("titel"),
-                    "debateurl": meta.get("debateurl"),
+                    "heading": meta.get("title"),
+                    "url_video": meta.get("url_video"),
                     "snippet": hit.snippet or "",
                     "score": hit.score or 0.0,
                     "speaker": hit.speaker,
                     "party": hit.party,
-                    "intressent_id": iid,
+                    "person_id": iid,
                     "date": hit.date,
                 }
             )
             if iid and hit.speaker and iid not in collected_persons:
                 collected_persons[iid] = {"name": hit.speaker, "party": hit.party or ""}
             if iid:
-                intressent_ids.append(iid)
-        return intressent_ids
+                person_ids.append(iid)
+        return person_ids
 
     @staticmethod
     def _compact_old_tool_messages(messages: List[ChatMessage], budget: int) -> int:
@@ -1187,7 +1187,7 @@ class ChatService:
             speaker = hit.speaker or "Okänd"
             party = f" ({hit.party})" if hit.party else ""
             date = hit.date or ""
-            heading = (meta.get("titel") or "").strip()
+            heading = (meta.get("title") or "").strip()
             if len(heading) > 60:
                 heading = heading[:60].rstrip() + "…"
             preview = (hit.snippet or "").replace("\n", " ").strip()[:90]
@@ -1218,15 +1218,15 @@ class ChatService:
 
         Skips debate-level hits: `vector_search_debates` emits bare ids like
         "2021-06-17:42" with metadata["kind"] == "debate". Debates are a
-        navigation tool and are not citable on their own — talks inside a
+        navigation tool and are not citable on their own — speeches inside a
         debate become citable via `fetch_debate`.
         """
         for hit in hits_response.hits:
             meta = hit.metadata or {}
             if meta.get("kind") == "debate" or (hit.id or "").startswith("debates/"):
                 continue
-            talk_id = normalize_talk_id(hit.id) or hit.key
-            if not talk_id:
+            speech_id = normalize_talk_id(hit.id) or hit.key
+            if not speech_id:
                 continue
             # Body = grounding text the LLM should be able to recall via
             # lookup_source. Prefer full text (fetch_documents), fall back to
@@ -1235,15 +1235,15 @@ class ChatService:
             body_text = hit.text or hit.snippet or ""
             registry.register(
                 SourceRecord(
-                    source_id=talk_id,
+                    source_id=speech_id,
                     tool=tool_name,
                     speaker=hit.speaker,
                     party=hit.party,
                     date=hit.date,
-                    heading=meta.get("titel"),
-                    debateurl=meta.get("debateurl"),
+                    heading=meta.get("title"),
+                    url_video=meta.get("url_video"),
                     snippet=hit.snippet or hit.text or "",
-                    intressent_id=meta.get("intressent_id"),
+                    person_id=meta.get("person_id"),
                     score=hit.score or 0.0,
                     body=body_text,
                 )
@@ -1564,8 +1564,8 @@ class ChatService:
                                 hid
                                 for hid in original
                                 if hid in valid_hit_ids
-                                or f"talks/{hid}" in valid_hit_ids
-                                or f"motions/{hid}" in valid_hit_ids
+                                or f"speeches/{hid}" in valid_hit_ids
+                                or f"documents/{hid}" in valid_hit_ids
                             ]
                             stripped = set(original) - set(tool_args["hit_ids"])
                             if stripped:
@@ -1599,7 +1599,7 @@ class ChatService:
                         # (to avoid JSON-serialisation issues in the _llm wrapper),
                         # use that instead of the plain string return value.
                         structured = _tool_structured_result.get()
-                        # For database_query: extract speaker intressent_ids from enriched rows
+                        # For database_query: extract speaker person_ids from enriched rows
                         # so the shadow communicator can attach portraits to stats insights.
                         if (
                             tool_name == "database_query"
@@ -1609,9 +1609,9 @@ class ChatService:
                             for row in structured.get("rows") or []:
                                 if not isinstance(row, dict):
                                     continue
-                                iid = row.get("intressent_id")
-                                name = row.get("talare")
-                                party = row.get("parti", "")
+                                iid = row.get("person_id")
+                                name = row.get("speaker_name")
+                                party = row.get("party", "")
                                 if iid and name and iid not in collected_persons:
                                     collected_persons[iid] = {"name": name, "party": party}
                             structured = None  # Don't let this dict affect tool_result downstream
@@ -1692,7 +1692,7 @@ class ChatService:
                             event_callback(
                                 {
                                     "type": "tool_speakers",
-                                    "intressent_ids": list(dict.fromkeys(iids)),
+                                    "person_ids": list(dict.fromkeys(iids)),
                                 }
                             )
                         # Evict raw bodies — full text is in the registry, accessible via lookup_source.
@@ -1709,7 +1709,7 @@ class ChatService:
                             event_callback(
                                 {
                                     "type": "tool_speakers",
-                                    "intressent_ids": list(dict.fromkeys(iids)),
+                                    "person_ids": list(dict.fromkeys(iids)),
                                 }
                             )
                         tool_result_string = self._build_eviction_stub(
@@ -1734,10 +1734,10 @@ class ChatService:
                                 debate_summary = (tool_result.get("summary") or "").strip()
                                 note = tool_result.get("note") or ""
                                 num_talks = tool_result.get("num_talks") or 0
-                                datum = tool_result.get("datum") or ""
+                                date = tool_result.get("date") or ""
                                 debate_id = tool_result.get("debate_id") or ""
                                 header_lines = [
-                                    f"fetch_debate({debate_id}) — {datum}, {num_talks} talks"
+                                    f"fetch_debate({debate_id}) — {date}, {num_talks} speeches"
                                 ]
                                 if debate_summary:
                                     header_lines.append(f"Debate summary: {debate_summary}")
@@ -1914,7 +1914,7 @@ class ChatService:
                                         f"Ditt svar innehåller källhänvisningar ({invalid_shown}) "
                                         "som inte finns bland de tal du har hämtat — du har hittat på tal-ID:n. "
                                         "Du får BARA citera tal vars [src:ID] du faktiskt sett i ett verktygsresultat. "
-                                        "Sök igen med rätt filter (t.ex. intressent_ids) och bygg om svaret med riktiga källhänvisningar."
+                                        "Sök igen med rätt filter (t.ex. person_ids) och bygg om svaret med riktiga källhänvisningar."
                                     ),
                                 }
                             )
@@ -1980,7 +1980,7 @@ class ChatService:
             event_callback: SSE emitter for the frontend.
             sent_insights: Shared list of messages already emitted this session.
                 Updated in-place when a new insight is sent so future calls can avoid repeats.
-            known_persons: Snapshot of {intressent_id → {name, party}} from actual results.
+            known_persons: Snapshot of {person_id → {name, party}} from actual results.
                 Used to reject hallucinated speaker_ids.
             known_hit_ids: Snapshot of talk IDs seen in actual search results.
                 Used to reject hallucinated hit_ids.
@@ -2053,8 +2053,8 @@ class ChatService:
                         h
                         for h in args["hit_ids"]
                         if h in known_hit_ids
-                        or f"talks/{h}" in known_hit_ids
-                        or f"motions/{h}" in known_hit_ids
+                        or f"speeches/{h}" in known_hit_ids
+                        or f"documents/{h}" in known_hit_ids
                     ]
 
                 print_yellow(f"[ShadowCommunicator] share_insight: {message[:120]}")
@@ -2073,7 +2073,7 @@ class ChatService:
     ) -> str:
         """Run one fact-check + language-polish pass over the draft answer.
 
-        Fetches the full anforandetext for each cited source (capped so the editor
+        Fetches the full text for each cited source (capped so the editor
         call stays within model context), hands them to the editor along with the
         draft, and returns the rewritten draft. On any error the original draft is
         returned unchanged so the user never gets worse output because of the pass.
@@ -2095,12 +2095,12 @@ class ChatService:
         from postgres_client import pg as _pg
         try:
             rows = _pg.execute(
-                "SELECT id, talare, parti, datum::text AS datum, anforandetext "
-                "FROM talks WHERE id = ANY(%s::text[])",
+                "SELECT id, speaker_name, party, date::text AS date, text "
+                "FROM speeches WHERE id = ANY(%s::text[])",
                 (cited_ids,),
             )
         except Exception as exc:
-            print_red(f"[Editor] failed to fetch cited talks: {exc}")
+            print_red(f"[Editor] failed to fetch cited speeches: {exc}")
             return draft
         talks_by_id: Dict[str, Dict[str, Any]] = {r["id"]: r for r in rows}
 
@@ -2124,9 +2124,9 @@ class ChatService:
                         f"(Full talktext ej tillgänglig — använd snippet nedan)\n{src.snippet[:per_source]}"
                     )
                 continue
-            text = (row.get("anforandetext") or "")[:per_source]
+            text = (row.get("text") or "")[:per_source]
             source_blocks.append(
-                f"[src:{sid} | {row['talare']} ({row['parti']}) | {row['datum']}]\n{text}"
+                f"[src:{sid} | {row['speaker_name']} ({row['party']}) | {row['date']}]\n{text}"
             )
 
         sources_text = "\n\n---\n\n".join(source_blocks)
@@ -2254,7 +2254,7 @@ class ChatService:
             idx = n - 1
             if 0 <= idx < len(cited_sources):
                 src = cited_sources[idx]
-                tid = (src.get("talk_id") or src.get("_id") or "").split("/")[-1]
+                tid = (src.get("speech_id") or src.get("_id") or "").split("/")[-1]
                 if tid:
                     talk_ids.append(tid)
 
@@ -2263,8 +2263,8 @@ class ChatService:
             try:
                 from postgres_client import pg as _pg
                 rows = _pg.execute(
-                    "SELECT id, talare, parti, datum::text AS datum, anforandetext "
-                    "FROM talks WHERE id = ANY(%s::text[])",
+                    "SELECT id, speaker_name, party, date::text AS date, text "
+                    "FROM speeches WHERE id = ANY(%s::text[])",
                     (list(set(talk_ids)),),
                 )
                 full_texts = {r["id"]: r for r in rows}
@@ -2296,12 +2296,12 @@ class ChatService:
                 if not (0 <= idx < len(cited_sources)):
                     continue
                 src = cited_sources[idx]
-                tid = (src.get("talk_id") or src.get("_id") or "").split("/")[-1]
+                tid = (src.get("speech_id") or src.get("_id") or "").split("/")[-1]
                 meta = full_texts.get(tid)
                 if meta:
-                    text = (meta.get("anforandetext") or "")[:_PER_SOURCE_CHARS]
+                    text = (meta.get("text") or "")[:_PER_SOURCE_CHARS]
                     source_blocks.append(
-                        f"[{n}] {meta['talare']} ({meta['parti']}) — {meta['datum']}\n{text}"
+                        f"[{n}] {meta['speaker_name']} ({meta['party']}) — {meta['date']}\n{text}"
                     )
                 else:
                     source_blocks.append(
@@ -2319,7 +2319,7 @@ class ChatService:
                         src_labels.append(f"[{n}] {s.get('speaker')} ({s.get('party')})")
                 mismatch_lines.append(
                     f"- Stycket namnger '{w['name']} ({w['party']})' men de citerade källorna "
-                    f"({', '.join(src_labels) or '?'}) matchar inte detta namn/parti."
+                    f"({', '.join(src_labels) or '?'}) matchar inte detta name/party."
                 )
                 print_yellow(
                     f"[Fact-check fix] para {cited_para_idx}: "
@@ -2616,7 +2616,7 @@ class ChatService:
             idx = n - 1
             if 0 <= idx < len(cited_sources):
                 src = cited_sources[idx]
-                tid = (src.get("talk_id") or src.get("_id") or "").split("/")[-1]
+                tid = (src.get("speech_id") or src.get("_id") or "").split("/")[-1]
                 if tid:
                     talk_ids.append(tid)
 
@@ -2625,8 +2625,8 @@ class ChatService:
             try:
                 from postgres_client import pg as _pg
                 rows = _pg.execute(
-                    "SELECT id, talare, parti, datum::text AS datum, anforandetext "
-                    "FROM talks WHERE id = ANY(%s::text[])",
+                    "SELECT id, speaker_name, party, date::text AS date, text "
+                    "FROM speeches WHERE id = ANY(%s::text[])",
                     (list(set(talk_ids)),),
                 )
                 full_texts = {r["id"]: r for r in rows}
@@ -2655,12 +2655,12 @@ class ChatService:
                 if not (0 <= idx < len(cited_sources)):
                     continue
                 src = cited_sources[idx]
-                tid = (src.get("talk_id") or src.get("_id") or "").split("/")[-1]
+                tid = (src.get("speech_id") or src.get("_id") or "").split("/")[-1]
                 meta = full_texts.get(tid)
                 if meta:
-                    text = (meta.get("anforandetext") or "")[:_PER_SOURCE_CHARS]
+                    text = (meta.get("text") or "")[:_PER_SOURCE_CHARS]
                     source_blocks.append(
-                        f"[{n}] {meta['talare']} ({meta['parti']}) — {meta['datum']}\n{text}"
+                        f"[{n}] {meta['speaker_name']} ({meta['party']}) — {meta['date']}\n{text}"
                     )
                 else:
                     source_blocks.append(
@@ -2679,7 +2679,7 @@ class ChatService:
                         src_labels.append(f"[{n}] {s.get('speaker')} ({s.get('party')})")
                 mismatch_lines.append(
                     f"- Stycket namnger '{w['name']} ({w['party']})' men de citerade källorna "
-                    f"({', '.join(src_labels) or '?'}) matchar inte detta namn/parti."
+                    f"({', '.join(src_labels) or '?'}) matchar inte detta name/party."
                 )
                 print_yellow(
                     f"[Attribution fix] para {cited_para_idx}: "
@@ -2696,9 +2696,9 @@ class ChatService:
                 + "\n\n---\n\n".join(source_blocks)
                 + "\n\n"
                 "Rätta stycket enligt följande prioritering:\n"
-                "1. Om källan stöder påståendet men talaren är fel — rätta till rätt namn/parti.\n"
+                "1. Om källan stöder påståendet men talaren är fel — rätta till rätt name/party.\n"
                 "2. Om påståendet handlar om ett partis ståndpunkt (inte en namngiven ledamot) — ta bort personnamnet.\n"
-                "3. Om källan inte stöder påståendet alls — ta bort eller omformulera utan namn.\n"
+                "3. Om källan inte stöder påståendet alls — ta bort eller omformulera utan name.\n"
                 "Bevara [N]-taggarna exakt som de är. Returnera ENBART det rättade stycket, ingen förklaring."
             )
 
@@ -2825,10 +2825,10 @@ class ChatService:
                 "heading": source.get("heading"),
                 "snippet": snippet_text,
                 "chunk_index": chunk_index,
-                "debateurl": source.get("debateurl") or source.get("debate_url"),
+                "url_video": source.get("url_video") or source.get("debate_url"),
                 "speaker": source.get("speaker"),
                 "party": source.get("party"),
-                "intressent_id": source.get("intressent_id"),
+                "person_id": source.get("person_id"),
                 "date": source.get("date"),
             }
         max_items = max(1, limit)
@@ -2842,7 +2842,7 @@ class ChatService:
 
     def _get_unique_name_persons(self, persons: Dict[str, Dict]) -> Dict[str, Dict]:
         """
-        Look up each collected person by intressent_id to get the canonical DB name,
+        Look up each collected person by person_id to get the canonical DB name,
         then keep only those whose name is unique in the people table.
         Two simple queries — same pattern as names_autocomplete.py.
         """
@@ -2851,11 +2851,11 @@ class ChatService:
         from postgres_client import pg
 
         iids = list(persons.keys())
-        print_yellow(f"[ChatService] Person lookup: {len(iids)} intressent_ids: {iids}")
+        print_yellow(f"[ChatService] Person lookup: {len(iids)} person_ids: {iids}")
         try:
-            # Step 1: get canonical name + party for each collected intressent_id.
+            # Step 1: get canonical name + party for each collected person_id.
             id_rows = pg.execute(
-                "SELECT intressent_id, namn, parti FROM people WHERE intressent_id = ANY(%s)",
+                "SELECT person_id, name, party FROM people WHERE person_id = ANY(%s)",
                 (iids,),
             )
             print_yellow(f"[ChatService] DB returned {len(id_rows)} people rows")
@@ -2863,22 +2863,22 @@ class ChatService:
                 return {}
 
             # Step 2: check which of those names are unique (case-insensitive).
-            names = [r["namn"] for r in id_rows]
+            names = [r["name"] for r in id_rows]
             unique_rows = pg.execute(
-                "SELECT namn FROM people WHERE LOWER(namn) = ANY(%s) GROUP BY namn HAVING COUNT(*) = 1",
+                "SELECT name FROM people WHERE LOWER(name) = ANY(%s) GROUP BY name HAVING COUNT(*) = 1",
                 ([n.lower() for n in names],),
             )
-            unique_names_lower = {r["namn"].lower() for r in unique_rows}
+            unique_names_lower = {r["name"].lower() for r in unique_rows}
             print_yellow(
-                f"[ChatService] Unique names: {[r['namn'] for r in unique_rows]}"
+                f"[ChatService] Unique names: {[r['name'] for r in unique_rows]}"
             )
 
             result = {}
             for row in id_rows:
-                if row["namn"].lower() in unique_names_lower:
-                    result[row["intressent_id"]] = {
-                        "name": row["namn"],
-                        "party": row["parti"] or "",
+                if row["name"].lower() in unique_names_lower:
+                    result[row["person_id"]] = {
+                        "name": row["name"],
+                        "party": row["party"] or "",
                     }
             print_green(
                 f"[ChatService] {len(result)} persons will be linked: {[v['name'] for v in result.values()]}"
@@ -2899,7 +2899,7 @@ class ChatService:
     ) -> Tuple[List[Dict], str]:
         """
         Inject markdown person links into the answer body for persons with unique names.
-        First occurrence: [Name (Party)](/mp/intressent_id), subsequent: [Name](/mp/id).
+        First occurrence: [Name (Party)](/mp/person_id), subsequent: [Name](/mp/id).
         Skips the "Källor" section so citation lines are not modified.
 
         When `cited_sources` is provided, a name is only wrapped if the paragraph
@@ -2955,7 +2955,7 @@ class ChatService:
         body = "\n\n".join(rebuilt)
 
         persons_list = [
-            {"intressent_id": iid, **unique_persons[iid]} for iid in used_ids
+            {"person_id": iid, **unique_persons[iid]} for iid in used_ids
         ]
         return persons_list, body + tail
 

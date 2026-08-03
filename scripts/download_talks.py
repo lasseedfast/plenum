@@ -18,8 +18,8 @@ def download(all=False, year=None):
                 url = f"https://data.riksdagen.se/dataset/anforande/anforande-{first_part}{second_part}.json.zip"
             print(url)
 
-            # Ensure the 'talks' directory exists
-            talks_dir = "talks"
+            # Ensure the 'speeches' directory exists
+            talks_dir = "speeches"
             os.makedirs(talks_dir, exist_ok=True)
 
             # Create a subdirectory for the current year range
@@ -40,8 +40,8 @@ def download(all=False, year=None):
         url = f"https://data.riksdagen.se/dataset/anforande/anforande-{first_part}{second_part}.json.zip"
         print(url)
 
-        # Ensure the 'talks' directory exists
-        talks_dir = "talks"
+        # Ensure the 'speeches' directory exists
+        talks_dir = "speeches"
         os.makedirs(talks_dir, exist_ok=True)
 
         # Create a subdirectory for the current year range

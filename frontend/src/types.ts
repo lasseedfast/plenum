@@ -1,7 +1,7 @@
 export type TalkHit = {
 	id: string;  // ArangoDB _id, but named 'id' in TypeScript
 	_id?: string;  // Some endpoints (e.g. chat search cards) return the raw ArangoDB _id under this key instead
-	dok_id?: string;  // Made optional since it might not always be present
+	doc_id?: string;  // Made optional since it might not always be present
 	text: string;
 	snippet?: string | null;
 	snippet_long?: string | null;
@@ -14,10 +14,10 @@ export type TalkHit = {
 	party?: string | null;
 	url_audio?: string | null;
 	audio_start_seconds?: number | null;
-	intressent_id?: string | null;
-	titel?: string | null;
-	kammaraktivitet?: string | null;
-	rel_dok_id?: string | null;
+	person_id?: string | null;
+	title?: string | null;
+	activity_type?: string | null;
+	related_doc_id?: string | null;
 };
 
 export type SearchFilters = {
@@ -71,7 +71,7 @@ export type MetaResponse = {
 	};
 	parties: Party[];
 	party_defaults: { unknown_color: string; code_pattern: string };
-	/** Keyed by the value stored in talks.kammaraktivitet. */
+	/** Keyed by the value stored in speeches.activity_type. */
 	activity_types: Record<string, DebateType>;
 	vocabulary: Record<string, string>;
 	urls: Record<string, string>;
@@ -93,59 +93,59 @@ export type ChatSource = {
 	_id: string;
 	chunk_index: number;
 	heading: string | null;
-	debateurl: string | null;
+	url_video: string | null;
 	snippet: string;
 	score: number;
 	speaker?: string | null;
 	party?: string | null;
-	intressent_id?: string | null;
+	person_id?: string | null;
 	date?: string | null;
 };
 
 export type MotionAuthor = {
-	namn: string | null;
-	partibet: string | null;
-	roll: string | null;
-	intressent_id: string | null;
-	tilltalsnamn?: string | null;
-	bild_url_192?: string | null;
-	valkrets?: string | null;
+	name: string | null;
+	party: string | null;
+	role: string | null;
+	person_id: string | null;
+	first_name?: string | null;
+	image_url_medium?: string | null;
+	constituency?: string | null;
 	status?: string | null;
 };
 
 export type MotionYrkande = {
-	nummer?: string | null;
-	lydelse?: string | null;
-	utskottet?: string | null;
-	kammaren?: string | null;
-	behandlas_i?: string | null;
+	number?: string | null;
+	text?: string | null;
+	committee_recommendation?: string | null;
+	chamber_decision?: string | null;
+	handled_in?: string | null;
 };
 
 export type Motion = {
 	kind: "motion";
-	dok_id: string;
-	talare: string;
-	parti: string;
-	datum: string | null;
-	titel: string | null;
-	undertitel: string | null;
-	anforandetext: string | null;
+	doc_id: string;
+	speaker_name: string;
+	party: string;
+	date: string | null;
+	title: string | null;
+	subtitle: string | null;
+	text: string | null;
 	has_text: boolean;
-	rm: string | null;
-	beteckning: string | null;
-	subtyp: string | null;
-	organ: string | null;
+	session_label: string | null;
+	designation: string | null;
+	subtype: string | null;
+	committee: string | null;
 	status: string | null;
 	parties: string[];
 	authors: MotionAuthor[];
 	yrkanden: MotionYrkande[];
-	pdf_url: string | null;
-	dokument_url_html: string | null;
+	url_pdf: string | null;
+	url_html: string | null;
 	person?: {
-		bild_url_192?: string | null;
-		tilltalsnamn?: string | null;
-		intressent_id?: string | null;
-		valkrets?: string | null;
+		image_url_medium?: string | null;
+		first_name?: string | null;
+		person_id?: string | null;
+		constituency?: string | null;
 		status?: string | null;
 	} | null;
 };
@@ -215,7 +215,7 @@ export type LiveStatsCard = {
 export type LiveInsightCard = {
 	type: "insight_card";
 	message: string;
-	sources?: Record<string, string>;  // talk ID → debateurl
+	sources?: Record<string, string>;  // talk ID → url_video
 	speaker_ids: string[];
 	speaker_ids_context?: string;
 };
@@ -236,7 +236,7 @@ export type ResearchCard = {
 };
 
 export type PersonRef = {
-	intressent_id: string;
+	person_id: string;
 	name: string;
 	party: string;
 };
@@ -276,15 +276,15 @@ export type Uppdrag = {
 };
 
 export type PersonDetail = {
-	intressent_id: string;
-	namn: string;
-	tilltalsnamn?: string | null;
-	efternamn?: string | null;
-	parti?: string | null;
-	valkrets?: string | null;
+	person_id: string;
+	name: string;
+	first_name?: string | null;
+	last_name?: string | null;
+	party?: string | null;
+	constituency?: string | null;
 	status?: string | null;
-	bild_url_192?: string | null;
-	fodd_ar?: string | null;
+	image_url_medium?: string | null;
+	birth_year?: string | null;
 	uppdrag?: Uppdrag[] | null;
 };
 
@@ -308,8 +308,8 @@ export type SnapshotTurn = {
 export type SnapshotData = {
 	id: string;
 	session_type: "general" | "mp";
-	intressent_id?: string | null;
-	initial_talk_id?: string | null;
+	person_id?: string | null;
+	initial_speech_id?: string | null;
 	turns: SnapshotTurn[];
 	llm_messages?: ChatMessage[];
 	focus_ids?: string[];
@@ -319,8 +319,8 @@ export type SnapshotData = {
 export type ChatSessionData = {
 	id: string;
 	session_type: "general" | "mp";
-	intressent_id?: string | null;
-	initial_talk_id?: string | null;
+	person_id?: string | null;
+	initial_speech_id?: string | null;
 	llm_messages: ChatMessage[];
 	turns: ChatTurn[] | MpChatTurn[];
 	focus_ids: string[];
@@ -331,8 +331,8 @@ export type ChatSessionData = {
 /** PUT body for /sessions — either the plaintext fields or the enc_* pair. */
 export type SessionUpsertData = {
 	session_type: "general" | "mp";
-	intressent_id?: string | null;
-	initial_talk_id?: string | null;
+	person_id?: string | null;
+	initial_speech_id?: string | null;
 	llm_messages?: ChatMessage[];
 	turns?: ChatTurn[] | MpChatTurn[] | SnapshotTurn[];
 	focus_ids?: string[];
@@ -345,14 +345,14 @@ export type EncSessionPayload = {
 	llm_messages: ChatMessage[];
 	turns: ChatTurn[] | MpChatTurn[];
 	focus_ids: string[];
-	intressent_id?: string | null;
-	initial_talk_id?: string | null;
+	person_id?: string | null;
+	initial_speech_id?: string | null;
 };
 
 /** Decrypted contents of enc_title (list labels + MP link target). */
 export type EncTitlePayload = {
 	title: string;
-	intressent_id?: string | null;
+	person_id?: string | null;
 };
 
 /* ── Accounts (zero-knowledge login) ───────────────────────────── */

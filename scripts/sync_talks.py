@@ -7,8 +7,8 @@ Pipeline (körs dagligen via systemd timer):
   1. Ladda ned årets anföranden från riksdagen.se (ersätter tidigare nerladdning)
   2. Infoga nya anföranden i PostgreSQL (hoppar över redan existerande via ON CONFLICT)
   3. Tilldela debatt-ID:n till anföranden som saknar det
-  4. Bygg embeddings för anföranden som saknar chunks
-  5. Generera sammanfattningar för datum som saknar summary
+  4. Bygg embeddings för anföranden som saknar speech_chunks
+  5. Generera sammanfattningar för date som saknar summary
 
 Kör manuellt: python scripts/sync_talks.py
 """
@@ -49,12 +49,12 @@ def get_current_session_year() -> int:
     return now.year if now.month >= 9 else now.year - 1
 
 
-def download_current_year(session_year: int) -> str:
+def download_current_year(year: int) -> str:
     """Laddar ned och extraherar ZIP-arkivet för angiven riksdagssession."""
-    second_part = str(session_year + 1)[2:]
-    url = f"https://data.riksdagen.se/dataset/anforande/anforande-{session_year}{second_part}.json.zip"
-    folder_name = f"anforande-{session_year}{second_part}"
-    dir_path = os.path.join("talks", folder_name)
+    second_part = str(year + 1)[2:]
+    url = f"https://data.riksdagen.se/dataset/anforande/anforande-{year}{second_part}.json.zip"
+    folder_name = f"anforande-{year}{second_part}"
+    dir_path = os.path.join("speeches", folder_name)
 
     logger.info(f"Downloading {url} → {dir_path}")
     os.makedirs(dir_path, exist_ok=True)
@@ -72,12 +72,12 @@ def download_current_year(session_year: int) -> str:
 
 
 def get_unsummarized_dates() -> list[str]:
-    """Hämtar datum som har anföranden utan sammanfattning."""
+    """Hämtar date som har anföranden utan sammanfattning."""
     rows = pg.execute(
-        "SELECT DISTINCT datum::text AS datum FROM talks WHERE summary IS NULL ORDER BY datum"
+        "SELECT DISTINCT date::text AS date FROM speeches WHERE summary IS NULL ORDER BY date"
     )
-    dates = sorted(row["datum"] for row in rows if row.get("datum"))
-    logger.info(f"Found {len(dates)} dates with unsummarized talks")
+    dates = sorted(row["date"] for row in rows if row.get("date"))
+    logger.info(f"Found {len(dates)} dates with unsummarized speeches")
     return dates
 
 
@@ -86,30 +86,30 @@ def sync() -> None:
     logger.info("=== Starting daily riksdagen sync ===")
 
     # --- Steg 1: Ladda ned ---
-    session_year = get_current_session_year()
-    logger.info(f"Current session year: {session_year}/{session_year + 1}")
-    dir_path = download_current_year(session_year)
+    year = get_current_session_year()
+    logger.info(f"Current session year: {year}/{year + 1}")
+    dir_path = download_current_year(year)
 
     # --- Steg 2: Infoga nya anföranden ---
-    logger.info("Stage 2: Inserting new talks into PostgreSQL...")
+    logger.info("Stage 2: Inserting new speeches into PostgreSQL...")
     from scripts.documents_to_postgres import update_folder
 
     new_talks = update_folder(os.path.abspath(dir_path))
-    logger.info(f"Stage 2 complete: {new_talks} new talks inserted")
+    logger.info(f"Stage 2 complete: {new_talks} new speeches inserted")
 
     # --- Steg 3: Tilldela debatt-ID:n ---
-    logger.info("Stage 3: Assigning debate IDs to talks missing them...")
+    logger.info("Stage 3: Assigning debate IDs to speeches missing them...")
     from scripts.debates import make_debate_ids
 
     make_debate_ids()
     logger.info("Stage 3 complete")
 
     # --- Steg 4: Chunk + bygg embeddings ---
-    logger.info("Stage 4: Chunking and embedding new talks...")
+    logger.info("Stage 4: Chunking and embedding new speeches...")
     from scripts.make_embeddings import make_embeddings
 
     total_chunks = make_embeddings()
-    logger.info(f"Stage 4 complete: {total_chunks} chunks created")
+    logger.info(f"Stage 4 complete: {total_chunks} speech_chunks created")
 
     # --- Steg 5: Generera sammanfattningar ---
     new_dates = get_unsummarized_dates()

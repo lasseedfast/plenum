@@ -50,7 +50,7 @@ from packages.llm import LLM
 from backend.services.chat import ChatService, SMART_MODEL, FAST_MODEL
 
 
-GENERATOR_SYSTEM = """Du genererar realistiska frågor som en svensk journalist eller medborgare kan ställa till ett chatgränssnitt över riksdagens anföranden (~450 000 anföranden från 1990 till idag, med talare, parti, datum, debatt och fulltext).
+GENERATOR_SYSTEM = """Du genererar realistiska frågor som en svensk journalist eller medborgare kan ställa till ett chatgränssnitt över riksdagens anföranden (~450 000 anföranden från 1990 till idag, med speaker_name, party, date, debatt och fulltext).
 
 Variera teman brett: sakpolitik (skola, vård, försvar, klimat, migration, skatt, EU, kultur, arbetsmarknad), personfrågor, historiska skeenden, specifika händelser, citat.
 
@@ -70,7 +70,7 @@ Du får:
 
 Din uppgift: avgör om påståendena i stycket stöds av de citerade talens faktiska innehåll.
 
-Var särskilt uppmärksam på om rätt talare och parti tillskrivs rätt tal. Ett känt fel är t.ex. att svaret skriver "Jan Björklund (M)" men det citerade talet hölls av Helena Bargholtz (L).
+Var särskilt uppmärksam på om rätt speaker_name och party tillskrivs rätt tal. Ett känt fel är t.ex. att svaret skriver "Jan Björklund (M)" men det citerade talet hölls av Helena Bargholtz (L).
 
 Returnera ENDAST ett JSON-objekt:
 {"verdict": "...", "cited_indices": [N, ...], "rationale": "kort motivering på svenska"}
@@ -81,14 +81,14 @@ Verdict (välj EXAKT ett):
 - "supported": påståendet stöds av taltexterna.
 - "partial": delvis korrekt men något är överdrivet eller ej verifierbart mot taltexterna.
 - "unsupported": påståendet motsägs eller saknar stöd i taltexterna — använd detta även när
-  rätt talare citeras men innehållet som tillskrivs dem inte finns i det angivna talet.
+  rätt speaker_name citeras men innehållet som tillskrivs dem inte finns i det angivna talet.
 - "wrong_speaker": ENBART om namnet eller partiförkortningen i stycket INTE stämmer med vem
   som faktiskt höll det citerade talet enligt taltextens metadata och innehåll. Ange rätt
-  talare/parti i rationale. Använd INTE detta verdict enbart för att innehållet är felaktigt
+  speaker_name/party i rationale. Använd INTE detta verdict enbart för att innehållet är felaktigt
   — det hör till "unsupported".
-- "wrong_attribution": rätt talare är angiven, men det specifika påståendet är hämtat från
+- "wrong_attribution": rätt speaker_name är angiven, men det specifika påståendet är hämtat från
   ett annat tal eller ett annat källindex än det som faktiskt citeras — t.ex. att innehållet
-  finns i källa [7] men stycket citerar [3] av samma talare."""
+  finns i källa [7] men stycket citerar [3] av samma speaker_name."""
 
 
 # ---------------------------------------------------------------------------
@@ -98,10 +98,10 @@ Verdict (välj EXAKT ett):
 def _fetch_random_talk_snippet() -> Optional[Dict[str, Any]]:
     """Pick a random talk and return its first ~500 chars plus metadata."""
     rows = pg.execute(
-        """SELECT id, talare, parti, datum::text AS datum,
-                  LEFT(anforandetext, 500) AS snippet
-           FROM talks
-           WHERE anforandetext IS NOT NULL AND LENGTH(anforandetext) > 300
+        """SELECT id, speaker_name, party, date::text AS date,
+                  LEFT(text, 500) AS snippet
+           FROM speeches
+           WHERE text IS NOT NULL AND LENGTH(text) > 300
            ORDER BY RANDOM()
            LIMIT 1"""
     )
@@ -136,7 +136,7 @@ class QuestionGenerator:
         return (
             f"Komplexitetsmål: {complexity}\n\n"
             "Här är ett utdrag ur ett riksdagsanförande:\n"
-            f"Talare: {talk.get('talare')} ({talk.get('parti')}) — {talk.get('datum')}\n"
+            f"Talare: {talk.get('speaker_name')} ({talk.get('party')}) — {talk.get('date')}\n"
             f"Utdrag:\n\"\"\"\n{talk.get('snippet')}\n\"\"\"\n\n"
             "Formulera en naturlig fråga på svenska som en journalist eller medborgare "
             "kunde ställa, och som skulle leda till att man hittar detta eller liknande "
@@ -204,7 +204,7 @@ class TraceCollector:
         elif etype == "insight":
             compact["message"] = (event.get("message") or "")[:200]
         elif etype == "tool_speakers":
-            compact["intressent_ids"] = event.get("intressent_ids") or []
+            compact["person_ids"] = event.get("person_ids") or []
         else:
             return
         self.events.append(compact)
@@ -245,7 +245,7 @@ def _check_speaker_metadata(
             if name_ok and src_party and src_party != para_party:
                 return (
                     f"Partifel: stycket anger ({para_party}) men källa [{src['n']}] "
-                    f"är ({src_party}) — talare: {src_spk}"
+                    f"är ({src_party}) — speaker_name: {src_spk}"
                 )
             if not name_ok:
                 return (
@@ -270,8 +270,8 @@ def _split_paragraphs(answer_md: str) -> List[str]:
         if marker in answer_md:
             answer_md = answer_md.split(marker, 1)[0]
             break
-    chunks = [c.strip() for c in answer_md.split("\n\n") if c.strip()]
-    return [c for c in chunks if _CITATION_RE.search(c)]
+    speech_chunks = [c.strip() for c in answer_md.split("\n\n") if c.strip()]
+    return [c for c in speech_chunks if _CITATION_RE.search(c)]
 
 
 def _parse_judge_json(text: str) -> Optional[Dict[str, Any]]:
@@ -294,20 +294,20 @@ def _parse_judge_json(text: str) -> Optional[Dict[str, Any]]:
 
 
 def _fetch_full_talks(talk_ids: List[str]) -> Dict[str, str]:
-    """Return {talk_id -> talk metadata + full anforandetext} for the given ids."""
+    """Return {speech_id -> talk metadata + full text} for the given ids."""
     if not talk_ids:
         return {}
     bare_ids = [tid.split("/", 1)[-1] for tid in talk_ids]
     rows = pg.execute(
-        "SELECT id, talare, parti, datum::text AS datum, anforandetext FROM talks WHERE id = ANY(%s::text[])",
+        "SELECT id, speaker_name, party, date::text AS date, text FROM speeches WHERE id = ANY(%s::text[])",
         (bare_ids,),
     )
     return {
         row["id"]: {
-            "talare": row["talare"],
-            "parti": row["parti"],
-            "datum": row["datum"],
-            "text": row["anforandetext"] or "",
+            "speaker_name": row["speaker_name"],
+            "party": row["party"],
+            "date": row["date"],
+            "text": row["text"] or "",
         }
         for row in rows
     }
@@ -402,23 +402,23 @@ class Judge:
         metadata_mismatch = _check_speaker_metadata(paragraph, cited_sources)
 
         # Fetch full talk texts for the sources cited in this paragraph.
-        talk_ids = [s.get("talk_id") or s.get("_id") for s in cited_sources if s.get("talk_id") or s.get("_id")]
+        talk_ids = [s.get("speech_id") or s.get("_id") for s in cited_sources if s.get("speech_id") or s.get("_id")]
         full_texts = _fetch_full_talks(talk_ids)
 
         source_block = ""
         combined_for_scorer_parts: List[str] = []
         for s in cited_sources:
             n = s.get("n", "?")
-            tid = (s.get("talk_id") or s.get("_id") or "").split("/")[-1]
+            tid = (s.get("speech_id") or s.get("_id") or "").split("/")[-1]
             meta = full_texts.get(tid)
             if meta:
                 source_block += (
-                    f"\n---\nKälla [{n}]: {meta['talare']} ({meta['parti']}) — {meta['datum']}\n"
+                    f"\n---\nKälla [{n}]: {meta['speaker_name']} ({meta['party']}) — {meta['date']}\n"
                     f"{meta['text']}\n"
                 )
                 # Scorer gets the full text (truncation handled by combined budget below).
                 combined_for_scorer_parts.append(
-                    f"[{n}] {meta['talare']} ({meta['parti']}) — {meta['datum']}\n{meta['text']}"
+                    f"[{n}] {meta['speaker_name']} ({meta['party']}) — {meta['date']}\n{meta['text']}"
                 )
             else:
                 # Fall back to snippet if full text not found
@@ -603,12 +603,12 @@ def compact_sources(sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [
         {
             "n": i + 1,
-            "talk_id": s.get("_id"),
+            "speech_id": s.get("_id"),
             "speaker": s.get("speaker"),
             "party": s.get("party"),
             "date": s.get("date"),
             "heading": s.get("heading"),
-            "intressent_id": s.get("intressent_id"),
+            "person_id": s.get("person_id"),
             "snippet": (s.get("snippet") or "")[:400],
         }
         for i, s in enumerate(sources or [])
@@ -651,16 +651,16 @@ def backfill_scores(scorer: CitationScorer, run_id: Optional[str] = None) -> Non
         paragraph = row["paragraph_text"] or ""
 
         cited_sources = [s for s in sources if s.get("n") in cited]
-        talk_ids = [s.get("talk_id") or s.get("_id") for s in cited_sources if s.get("talk_id") or s.get("_id")]
+        talk_ids = [s.get("speech_id") or s.get("_id") for s in cited_sources if s.get("speech_id") or s.get("_id")]
         full_texts = _fetch_full_talks(talk_ids)
 
         parts: List[str] = []
         for s in cited_sources:
             idx = s.get("n", "?")
-            tid = (s.get("talk_id") or s.get("_id") or "").split("/")[-1]
+            tid = (s.get("speech_id") or s.get("_id") or "").split("/")[-1]
             meta = full_texts.get(tid)
             if meta:
-                parts.append(f"[{idx}] {meta['talare']} ({meta['parti']}) — {meta['datum']}\n{meta['text']}")
+                parts.append(f"[{idx}] {meta['speaker_name']} ({meta['party']}) — {meta['date']}\n{meta['text']}")
             elif s.get("snippet"):
                 parts.append(f"[{idx}] {s.get('speaker')} ({s.get('party')})\n{s['snippet']}")
 

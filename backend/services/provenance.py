@@ -26,9 +26,9 @@ class SourceRecord:
     party: str | None = None
     date: str | None = None
     heading: str | None = None
-    debateurl: str | None = None
+    url_video: str | None = None
     snippet: str = ""
-    intressent_id: str | None = None
+    person_id: str | None = None
     score: float = 0.0
     body: str = ""  # Grounding text (chunk + neighbours, summary, or capped full text). Capped at BODY_CAP_CHARS.
 
@@ -37,7 +37,7 @@ class ProvenanceRegistry:
     """
     Collects and deduplicates sources across all tool calls in a single chat session.
 
-    Keyed by bare talk ID (e.g. "H40911"). Multiple chunks from the same talk
+    Keyed by bare talk ID (e.g. "H40911"). Multiple speech_chunks from the same talk
     update the existing record (keeping the best snippet) rather than creating
     duplicate entries.
     """
@@ -68,10 +68,10 @@ class ProvenanceRegistry:
                 existing.date = record.date
             if record.heading and not existing.heading:
                 existing.heading = record.heading
-            if record.debateurl and not existing.debateurl:
-                existing.debateurl = record.debateurl
-            if record.intressent_id and not existing.intressent_id:
-                existing.intressent_id = record.intressent_id
+            if record.url_video and not existing.url_video:
+                existing.url_video = record.url_video
+            if record.person_id and not existing.person_id:
+                existing.person_id = record.person_id
             if record.score > existing.score:
                 existing.score = record.score
         else:
@@ -90,11 +90,11 @@ class ProvenanceRegistry:
         return [self._sources[sid] for sid in self._order if sid in self._sources]
 
     def get_persons(self) -> Dict[str, Dict]:
-        """Return {intressent_id: {name, party}} for person link injection."""
+        """Return {person_id: {name, party}} for person link injection."""
         persons: Dict[str, Dict] = {}
         for src in self._sources.values():
-            if src.intressent_id and src.speaker and src.intressent_id not in persons:
-                persons[src.intressent_id] = {
+            if src.person_id and src.speaker and src.person_id not in persons:
+                persons[src.person_id] = {
                     "name": src.speaker,
                     "party": src.party or "",
                 }
@@ -109,14 +109,14 @@ class ProvenanceRegistry:
                 continue
             result.append(
                 {
-                    "_id": f"talks/{sid}",
+                    "_id": f"speeches/{sid}",
                     "heading": src.heading,
                     "snippet": _trim_snippet(src.snippet),
                     "chunk_index": -1,
-                    "debateurl": src.debateurl,
+                    "url_video": src.url_video,
                     "speaker": src.speaker,
                     "party": src.party,
-                    "intressent_id": src.intressent_id,
+                    "person_id": src.person_id,
                     "date": src.date,
                 }
             )
@@ -208,7 +208,7 @@ def parse_and_renumber_citations(
 
 
 def normalize_talk_id(raw: str | None) -> str | None:
-    """Strip 'talks/' prefix to get bare talk ID."""
+    """Strip 'speeches/' prefix to get bare talk ID."""
     if not raw:
         return None
     if "/" in raw:

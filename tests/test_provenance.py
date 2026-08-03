@@ -17,7 +17,7 @@ from backend.services.provenance import (
 
 class TestNormalizeTalkId:
     def test_strips_talks_prefix(self):
-        assert normalize_talk_id("talks/H40911") == "H40911"
+        assert normalize_talk_id("speeches/H40911") == "H40911"
 
     def test_bare_id_unchanged(self):
         assert normalize_talk_id("H40911") == "H40911"
@@ -45,7 +45,7 @@ def _make_record(source_id="H40911", **kwargs):
         date="2024-01-15",
         heading="Test heading",
         snippet="Some snippet text",
-        intressent_id="0123456789",
+        person_id="0123456789",
     )
     defaults.update(kwargs)
     return SourceRecord(source_id=source_id, **defaults)
@@ -70,7 +70,7 @@ class TestProvenanceRegistry:
         assert reg.size() == 2
 
     def test_dedup_by_talk_id(self):
-        """Multiple chunks from same talk -> single entry."""
+        """Multiple speech_chunks from same talk -> single entry."""
         reg = ProvenanceRegistry()
         reg.register(_make_record("H40911", snippet="short"))
         reg.register(_make_record("H40911", snippet="a much longer snippet text here"))
@@ -95,9 +95,9 @@ class TestProvenanceRegistry:
 
     def test_get_persons(self):
         reg = ProvenanceRegistry()
-        reg.register(_make_record("H40911", intressent_id="ID1", speaker="Alice", party="S"))
-        reg.register(_make_record("H40912", intressent_id="ID2", speaker="Bob", party="M"))
-        reg.register(_make_record("H40913", intressent_id=None, speaker="NoId"))
+        reg.register(_make_record("H40911", person_id="ID1", speaker="Alice", party="S"))
+        reg.register(_make_record("H40912", person_id="ID2", speaker="Bob", party="M"))
+        reg.register(_make_record("H40913", person_id=None, speaker="NoId"))
         persons = reg.get_persons()
         assert len(persons) == 2
         assert persons["ID1"] == {"name": "Alice", "party": "S"}
@@ -109,7 +109,7 @@ class TestProvenanceRegistry:
         sources = reg.to_cited_sources(["H40911"])
         assert len(sources) == 1
         s = sources[0]
-        assert s["_id"] == "talks/H40911"
+        assert s["_id"] == "speeches/H40911"
         assert s["speaker"] == "Alice"
         assert s["party"] == "S"
         assert s["date"] == "2024-01-15"
@@ -140,8 +140,8 @@ class TestParseAndRenumberCitations:
         assert "[2]" in answer
         assert "[src:" not in answer
         assert len(sources) == 2
-        assert sources[0]["_id"] == "talks/H40911"
-        assert sources[1]["_id"] == "talks/GH09100"
+        assert sources[0]["_id"] == "speeches/H40911"
+        assert sources[1]["_id"] == "speeches/GH09100"
         assert cited == ["H40911", "GH09100"]
         assert invalid == []
 
@@ -255,9 +255,9 @@ class TestParseAndRenumberCitations:
         answer, sources, cited, invalid = parse_and_renumber_citations(text, reg)
 
         assert cited == ["C", "A", "B"]
-        assert sources[0]["_id"] == "talks/C"
-        assert sources[1]["_id"] == "talks/A"
-        assert sources[2]["_id"] == "talks/B"
+        assert sources[0]["_id"] == "speeches/C"
+        assert sources[1]["_id"] == "speeches/A"
+        assert sources[2]["_id"] == "speeches/B"
 
 
 # ---------------------------------------------------------------------------

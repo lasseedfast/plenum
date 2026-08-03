@@ -1,15 +1,15 @@
 """
-Chunks and embeds all talks that are not yet represented in the 'chunks' table.
+Chunks and embeds all speeches that are not yet represented in the 'speech_chunks' table.
 
 Replaces scripts/make_arango_embeddings.py.
 
 Pipeline:
-  1. Find all talks with no chunk rows in PostgreSQL via LEFT JOIN.
-  2. Split each talk's anforandetext into chunks (max 500 chars) using TextChunker.
+  1. Find all speeches with no chunk rows in PostgreSQL via LEFT JOIN.
+  2. Split each talk's text into speech_chunks (max 500 chars) using TextChunker.
   3. Generate embeddings via Ollama in parallel (3 workers, batches of 20).
-  4. Insert chunk rows into the 'chunks' table with id = "{talk_id}:{chunk_index}".
+  4. Insert chunk rows into the 'speech_chunks' table with id = "{speech_id}:{chunk_index}".
 
-The search_vector column on talks is kept in sync by a trigger – no manual update needed.
+The search_vector column on speeches is kept in sync by a trigger – no manual update needed.
 
 Usage:
   python scripts/make_embeddings.py
@@ -66,7 +66,7 @@ def _chunk_docs(missing: List[Dict], text_key: str, parent_key: str) -> List[Lis
         text = (doc.get(text_key) or "").strip()
         if not text:
             continue
-        chunks = TextChunker(chunk_limit=500).chunk(text)
+        speech_chunks = TextChunker(chunk_limit=500).chunk(text)
         _chunks = [
             {
                 "id": f"{doc_id}:{idx}",
@@ -74,7 +74,7 @@ def _chunk_docs(missing: List[Dict], text_key: str, parent_key: str) -> List[Lis
                 "chunk_index": idx,
                 "text": content,
             }
-            for idx, content in enumerate(chunks)
+            for idx, content in enumerate(speech_chunks)
             if content and content.strip()
         ]
         for i in range(0, len(_chunks), EMBED_BATCH):
@@ -87,15 +87,15 @@ def _chunk_docs(missing: List[Dict], text_key: str, parent_key: str) -> List[Lis
 def _embed_and_insert(all_batches: List[List[Dict]], insert_sql: str, parent_key: str) -> int:
     """Embed all batches in parallel and bulk-insert the chunk rows."""
     if not all_batches:
-        logger.info("No chunks to embed.")
+        logger.info("No speech_chunks to embed.")
         return 0
 
     logger.info(f"Embedding {len(all_batches)} batches via Ollama …")
 
-    def _rows(chunks: List[Dict]) -> List[tuple]:
+    def _rows(speech_chunks: List[Dict]) -> List[tuple]:
         return [
             (c["id"], c[parent_key], c["chunk_index"], c["text"], c["embedding"])
-            for c in chunks
+            for c in speech_chunks
         ]
 
     total_inserted = 0
@@ -110,7 +110,7 @@ def _embed_and_insert(all_batches: List[List[Dict]], insert_sql: str, parent_key
             pending.extend(result)
             print(
                 f"  batches embedded: {completed}/{len(all_batches)} | "
-                f"chunks pending insert: {len(pending)}",
+                f"speech_chunks pending insert: {len(pending)}",
                 end="\r",
             )
             if len(pending) >= INSERT_BATCH:
@@ -123,52 +123,52 @@ def _embed_and_insert(all_batches: List[List[Dict]], insert_sql: str, parent_key
         total_inserted += len(pending)
 
     print()
-    logger.info(f"Done. Inserted {total_inserted} chunks into PostgreSQL.")
+    logger.info(f"Done. Inserted {total_inserted} speech_chunks into PostgreSQL.")
     return total_inserted
 
 
 def make_embeddings() -> int:
     """
-    Find talks with no chunks and generate + insert embeddings.
+    Find speeches with no speech_chunks and generate + insert embeddings.
     Returns the total number of chunk rows inserted.
     """
-    # Find talks that have no rows in the chunks table.
+    # Find speeches that have no rows in the speech_chunks table.
     # SET LOCAL disables parallel hash join for this query — it otherwise spills
     # into the Postgres container's small /dev/shm and fails with DiskFull.
     missing = pg.execute(
         """
         SET LOCAL max_parallel_workers_per_gather = 0;
-        SELECT t.id, t.anforandetext
-        FROM talks t
-        LEFT JOIN chunks c ON c.talk_id = t.id
+        SELECT t.id, t.text
+        FROM speeches t
+        LEFT JOIN speech_chunks c ON c.speech_id = t.id
         WHERE c.id IS NULL
-          AND t.anforandetext IS NOT NULL
-          AND t.anforandetext != ''
+          AND t.text IS NOT NULL
+          AND t.text != ''
         """
     )
-    logger.info(f"Found {len(missing)} talks without chunks")
+    logger.info(f"Found {len(missing)} speeches without speech_chunks")
 
-    all_batches = _chunk_docs(missing, text_key="anforandetext", parent_key="talk_id")
+    all_batches = _chunk_docs(missing, text_key="text", parent_key="speech_id")
 
     INSERT_SQL = """
-    INSERT INTO chunks (id, talk_id, chunk_index, text, embedding)
+    INSERT INTO speech_chunks (id, speech_id, chunk_index, text, embedding)
     VALUES %s
     ON CONFLICT (id) DO NOTHING
     """
-    return _embed_and_insert(all_batches, INSERT_SQL, parent_key="talk_id")
+    return _embed_and_insert(all_batches, INSERT_SQL, parent_key="speech_id")
 
 
 def make_motion_embeddings(year: int | None = None) -> int:
     """
-    Find motions with no chunks and generate + insert embeddings.
+    Find documents with no speech_chunks and generate + insert embeddings.
     Optional year filter for running the backfill in slices.
     Returns the total number of chunk rows inserted.
     """
     sql = """
         SET LOCAL max_parallel_workers_per_gather = 0;
-        SELECT m.dok_id AS id, m.text
-        FROM motions m
-        LEFT JOIN motion_chunks c ON c.motion_id = m.dok_id
+        SELECT m.doc_id AS id, m.text
+        FROM documents m
+        LEFT JOIN document_chunks c ON c.doc_id = m.doc_id
         WHERE c.id IS NULL
           AND m.has_text
         """
@@ -177,42 +177,42 @@ def make_motion_embeddings(year: int | None = None) -> int:
         sql += " AND m.year = %s"
         params = (year,)
     missing = pg.execute(sql, params)
-    logger.info(f"Found {len(missing)} motions without chunks")
+    logger.info(f"Found {len(missing)} documents without speech_chunks")
 
-    all_batches = _chunk_docs(missing, text_key="text", parent_key="motion_id")
+    all_batches = _chunk_docs(missing, text_key="text", parent_key="doc_id")
 
     INSERT_SQL = """
-    INSERT INTO motion_chunks (id, motion_id, chunk_index, text, embedding)
+    INSERT INTO document_chunks (id, doc_id, chunk_index, text, embedding)
     VALUES %s
     ON CONFLICT (id) DO NOTHING
     """
-    return _embed_and_insert(all_batches, INSERT_SQL, parent_key="motion_id")
+    return _embed_and_insert(all_batches, INSERT_SQL, parent_key="doc_id")
 
 
 def make_yrkande_embeddings(limit: int | None = None) -> int:
     """
-    Embed motion_yrkanden rows that have no embedding yet. Each yrkande (lydelse)
+    Embed document_proposals rows that have no embedding yet. Each yrkande (text)
     is a short, self-contained proposal, so it is embedded whole (no chunking).
-    Rows already exist (populated from the forslag JSONB), so this UPDATEs them.
+    Rows already exist (populated from the proposals_raw JSONB), so this UPDATEs them.
     Returns the number of yrkanden embedded.
     """
     sql = (
-        "SELECT id, lydelse FROM motion_yrkanden "
-        "WHERE embedding IS NULL AND lydelse IS NOT NULL AND lydelse != ''"
+        "SELECT id, text FROM document_proposals "
+        "WHERE embedding IS NULL AND text IS NOT NULL AND text != ''"
     )
     if limit is not None:
         sql += f" LIMIT {int(limit)}"
     missing = pg.execute(sql)
     logger.info(f"Found {len(missing)} yrkanden without embeddings")
 
-    items = [{"id": r["id"], "text": r["lydelse"]} for r in missing]
+    items = [{"id": r["id"], "text": r["text"]} for r in missing]
     batches = [items[i : i + EMBED_BATCH] for i in range(0, len(items), EMBED_BATCH)]
     if not batches:
         logger.info("No yrkanden to embed.")
         return 0
 
     logger.info(f"Embedding {len(batches)} yrkande batches via vLLM …")
-    UPDATE_SQL = "UPDATE motion_yrkanden SET embedding = %s WHERE id = %s"
+    UPDATE_SQL = "UPDATE document_proposals SET embedding = %s WHERE id = %s"
 
     total = 0
     pending: List[Dict] = []
@@ -238,7 +238,7 @@ def make_yrkande_embeddings(limit: int | None = None) -> int:
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else None
-    if mode == "motions":
+    if mode == "documents":
         year = int(sys.argv[2]) if len(sys.argv) > 2 else None
         make_motion_embeddings(year=year)
     elif mode == "yrkanden":

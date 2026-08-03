@@ -146,8 +146,8 @@ def main() -> int:
         "llm_messages": [{"role": "user", "content": secret_text}],
         "turns": [{"question": secret_text, "status": "ready", "answerHtml": "<p>svar</p>", "sources": []}],
         "focus_ids": ["H40911"],
-        "intressent_id": "0123456789",
-        "initial_talk_id": None,
+        "person_id": "0123456789",
+        "initial_speech_id": None,
     }
     enc_payload = enc_blob(dek, json.dumps(payload, ensure_ascii=False))
     enc_title = enc_blob(dek, json.dumps({"title": secret_text[:80]}, ensure_ascii=False))
@@ -162,7 +162,7 @@ def main() -> int:
     check("no plaintext content in DB row", secret_text not in dumped and "0123456789" not in dumped)
     check("plaintext columns scrubbed",
           (row["llm_messages"] or []) == [] and (row["turns"] or []) == []
-          and row["intressent_id"] is None)
+          and row["person_id"] is None)
     check("enc_payload decrypts to the content",
           json.loads(dec_blob(dek, row["enc_payload"])) == payload)
 

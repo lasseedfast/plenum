@@ -37,17 +37,17 @@ ChatResponse = Dict[str, Any]
 
 
 def _build_persona_system(person: Dict[str, Any], initial_talk: Optional[Dict[str, Any]] = None) -> str:
-    tilltalsnamn = person.get("tilltalsnamn") or ""
-    efternamn = person.get("efternamn") or ""
-    namn = person.get("namn") or f"{tilltalsnamn} {efternamn}".strip()
-    parti = person.get("parti") or "okänt parti"
-    valkrets = person.get("valkrets") or "okänd valkrets"
-    fodd_ar = person.get("fodd_ar") or ""
-    intressent_id = person.get("intressent_id") or ""
+    first_name = person.get("first_name") or ""
+    last_name = person.get("last_name") or ""
+    name = person.get("name") or f"{first_name} {last_name}".strip()
+    party = person.get("party") or "okänt party"
+    constituency = person.get("constituency") or "okänd constituency"
+    birth_year = person.get("birth_year") or ""
+    person_id = person.get("person_id") or ""
 
-    # Summarise current roles from personuppdrag (JSONB list of assignments)
+    # Summarise current roles from assignments (JSONB list of assignments)
     roles_text = ""
-    uppdrag = person.get("personuppdrag")
+    uppdrag = person.get("assignments")
     if isinstance(uppdrag, list):
         active = [
             u for u in uppdrag
@@ -56,20 +56,20 @@ def _build_persona_system(person: Dict[str, Any], initial_talk: Optional[Dict[st
         if active:
             role_lines = []
             for u in active[:5]:
-                organ = u.get("organ_kod") or u.get("typ") or ""
-                roll = u.get("roll_kod") or ""
-                if organ or roll:
-                    role_lines.append(f"- {roll} i {organ}".strip(" i"))
+                committee = u.get("organ_kod") or u.get("typ") or ""
+                role = u.get("roll_kod") or ""
+                if committee or role:
+                    role_lines.append(f"- {role} i {committee}".strip(" i"))
             if role_lines:
                 roles_text = "\nDina nuvarande uppdrag:\n" + "\n".join(role_lines)
 
-    birth_text = f"\nFödd: {fodd_ar}" if fodd_ar else ""
+    birth_text = f"\nFödd: {birth_year}" if birth_year else ""
 
     initial_talk_text = ""
     if initial_talk:
-        talk_date = initial_talk.get("datum") or ""
-        talk_topic = initial_talk.get("avsnittsrubrik") or initial_talk.get("titel") or "ett anförande"
-        talk_text = (initial_talk.get("anforandetext") or "")[:3000]
+        talk_date = initial_talk.get("date") or ""
+        talk_topic = initial_talk.get("section_title") or initial_talk.get("title") or "ett anförande"
+        talk_text = (initial_talk.get("text") or "")[:3000]
         initial_talk_text = f"""
 
 ## Startkontext: Samtalet startades från ett specifikt anförande
@@ -80,9 +80,9 @@ Anförande ({talk_date}, ämne: {talk_topic}):
 Om användaren ställer en allmän fråga kan du utgå från detta anförande.
 """
 
-    return f"""Du är {tilltalsnamn} {efternamn}, riksdagsledamot för {parti} från {valkrets}.{birth_text}{roles_text}
+    return f"""Du är {first_name} {last_name}, riksdagsledamot för {party} från {constituency}.{birth_text}{roles_text}
 
-**VIKTIGT: Du är en digital assistent, inte den riktiga {tilltalsnamn} {efternamn}.**
+**VIKTIGT: Du är en digital assistent, inte den riktiga {first_name} {last_name}.**
 Detta är ett rollspel baserat på faktiska anföranden i riksdagen.
 
 ## KRITISK REGEL — Gäller alltid utan undantag
@@ -98,9 +98,9 @@ Om du inte har tillräckligt med material: anropa nästa verktyg direkt.
 
 ## Sökstrategi — kör alltid hela kedjan automatiskt
 
-**Steg 1 — Sök {tilltalsnamn}s egna anföranden (ALLTID första steget):**
+**Steg 1 — Sök {first_name}s egna anföranden (ALLTID första steget):**
 ```
-arango_search(query="<ämne>", intressent_ids=["{intressent_id}"], return_snippets=True, limit=10)
+arango_search(query="<ämne>", person_ids=["{person_id}"], return_snippets=True, limit=10)
 ```
 `return_snippets=True` ger bara korta utdrag — bra för att se om det finns träffar.
 **Om du hittar relevanta träffar MÅSTE du sedan hämta full text med fetch_documents.**
@@ -111,9 +111,9 @@ fetch_documents(_ids=["<_id från steg 1>", ...])
 ```
 Utan full text kan du inte citera korrekt. Hoppa inte över detta steg.
 
-**Steg 3 — Om < 3 relevanta träffar på {tilltalsnamn}:** sök automatiskt partiets linje (ingen fråga till användaren):
+**Steg 3 — Om < 3 relevanta träffar på {first_name}:** sök automatiskt partiets linje (ingen fråga till användaren):
 ```
-arango_search(query="<ämne>", parties=["{parti}"], limit=5)
+arango_search(query="<ämne>", parties=["{party}"], limit=5)
 ```
 Notera: utan `return_snippets=True` får du full text direkt — du behöver inte hämta separat.
 
@@ -126,12 +126,12 @@ Du kör steg 2–4 på eget initiativ utan att fråga användaren.
 
 ## När du formulerar slutsvaret
 
-- Svara i första person som {tilltalsnamn}.
+- Svara i första person som {first_name}.
 - Referera naturligt till egna uttalanden: "Som jag sa i debatten om X (2019)..."
-- Om du hänvisar till partikollegor: "...min kollega [namn] betonade att..." — väv in organiskt,
+- Om du hänvisar till partikollegor: "...min kollega [name] betonade att..." — väv in organiskt,
   och var tydlig att det är partiets linje, inte ditt eget direkta uttalande.
 - Om du inte hittat egna anföranden om ämnet, säg det kort och gå direkt till partiets linje:
-  "Jag har inte talat om detta i riksdagen, men {parti}s hållning är tydlig — [partiresultat]."
+  "Jag har inte talat om detta i riksdagen, men {party}s hållning är tydlig — [partiresultat]."
 - Citera ALDRIG något du inte hittat via sökning.
 - Svara alltid på svenska.
 - Håll svaret konversationellt, inte som ett politikertal.
@@ -143,9 +143,9 @@ Inkludera inline-källhänvisningar i formatet [src:ID] direkt efter påstående
 {initial_talk_text}
 
 ## Dina tekniska identifierare
-- Namn: {namn}
-- Parti: {parti}
-- intressent_id: {intressent_id}  ← använd detta i intressent_ids-parametern
+- Namn: {name}
+- Parti: {party}
+- person_id: {person_id}  ← använd detta i person_ids-parametern
 """
 
 
@@ -161,24 +161,24 @@ def _collect_sources_from_payload(payload: Dict[str, Any], collected_sources: Li
         collected_sources.append({
             "_id": item_id,
             "chunk_index": item.get("chunk_index", -1),
-            "heading": item.get("titel") or item.get("heading"),
-            "debateurl": item.get("debateurl") or item.get("url_session"),
+            "heading": item.get("title") or item.get("heading"),
+            "url_video": item.get("url_video") or item.get("url_session"),
             "snippet": item.get("snippet") or item.get("snippet_long") or "",
-            "speaker": item.get("speaker") or item.get("talare"),
-            "party": item.get("party") or item.get("parti"),
-            "intressent_id": item.get("intressent_id"),
-            "date": item.get("date") or item.get("datum"),
+            "speaker": item.get("speaker") or item.get("speaker_name"),
+            "party": item.get("party") or item.get("party"),
+            "person_id": item.get("person_id"),
+            "date": item.get("date") or item.get("date"),
         })
 
 
 def _collect_persons_from_results(results: List[Any], collected_persons: Dict[str, Dict]) -> None:
-    """Extract intressent_id / speaker / party from search result items."""
+    """Extract person_id / speaker / party from search result items."""
     for item in results:
         if not isinstance(item, dict):
             continue
-        iid = item.get("intressent_id")
-        name = item.get("speaker") or item.get("talare")
-        party = item.get("party") or item.get("parti") or ""
+        iid = item.get("person_id")
+        name = item.get("speaker") or item.get("speaker_name")
+        party = item.get("party") or item.get("party") or ""
         if iid and name and iid not in collected_persons:
             collected_persons[iid] = {"name": name, "party": party}
 
@@ -191,30 +191,30 @@ class MpChatService:
     grounded in their actual parliamentary record.
     """
 
-    def __init__(self, intressent_id: str, initial_talk_id: Optional[str] = None,
+    def __init__(self, person_id: str, initial_speech_id: Optional[str] = None,
                  provider_override=None) -> None:
         from postgres_client import pg
 
-        self.intressent_id = intressent_id
+        self.person_id = person_id
 
         # Fetch person data
         rows = pg.execute(
-            """SELECT intressent_id, namn, tilltalsnamn, efternamn, parti, valkrets,
-                      status, fodd_ar, kon, bild_url_192, personuppdrag
-               FROM people WHERE intressent_id = %s""",
-            (intressent_id,)
+            """SELECT person_id, name, first_name, last_name, party, constituency,
+                      status, birth_year, gender, image_url_medium, assignments
+               FROM people WHERE person_id = %s""",
+            (person_id,)
         )
         if not rows:
-            raise ValueError(f"Person {intressent_id} not found")
+            raise ValueError(f"Person {person_id} not found")
         self.person = dict(rows[0])
 
         # Optionally fetch initial talk for context
         initial_talk = None
-        if initial_talk_id:
-            talk_id = initial_talk_id.replace("talks/", "")
+        if initial_speech_id:
+            speech_id = initial_speech_id.replace("speeches/", "")
             talk_rows = pg.execute(
-                "SELECT id, datum, avsnittsrubrik, titel, anforandetext FROM talks WHERE id = %s",
-                (talk_id,)
+                "SELECT id, date, section_title, title, text FROM speeches WHERE id = %s",
+                (speech_id,)
             )
             if talk_rows:
                 initial_talk = dict(talk_rows[0])
@@ -278,8 +278,8 @@ class MpChatService:
         messages: Sequence[ChatMessage],
         event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> ChatResponse:
-        namn = self.person.get("namn") or ""
-        tilltalsnamn = self.person.get("tilltalsnamn") or namn.split()[0] if namn else ""
+        name = self.person.get("name") or ""
+        first_name = self.person.get("first_name") or name.split()[0] if name else ""
 
         full_messages = [{"role": "system", "content": self.smart_llm.system_message}] + list(messages)
 
@@ -298,13 +298,13 @@ class MpChatService:
             search_reminder = ""
         else:
             search_reminder = (
-                f"\n\n**OBLIGATORISKT:** Anropa arango_search med intressent_ids=[\"{self.intressent_id}\"] "
+                f"\n\n**OBLIGATORISKT:** Anropa arango_search med person_ids=[\"{self.person_id}\"] "
                 f"INNAN du svarar. Hämta sedan full text med fetch_documents om du bara fick snippets. "
                 f"Alla sakpåståenden MÅSTE grunda sig i faktiska anföranden du hittat via sök."
             )
 
         enriched_question = (
-            f"En medborgare frågar {tilltalsnamn}: *{latest_user}*{search_reminder}"
+            f"En medborgare frågar {first_name}: *{latest_user}*{search_reminder}"
         )
 
         collected_sources: List[ChatSource] = []
@@ -456,16 +456,16 @@ class MpChatService:
                             # Collect sources and persons
                             for hit in hits_response.hits:
                                 meta = hit.metadata or {}
-                                iid = meta.get("intressent_id")
+                                iid = meta.get("person_id")
                                 collected_sources.append({
                                     "_id": hit.id or "",
                                     "chunk_index": meta.get("chunk_index", -1),
-                                    "heading": meta.get("titel"),
-                                    "debateurl": meta.get("debateurl"),
+                                    "heading": meta.get("title"),
+                                    "url_video": meta.get("url_video"),
                                     "snippet": hit.snippet or "",
                                     "speaker": hit.speaker,
                                     "party": hit.party,
-                                    "intressent_id": iid,
+                                    "person_id": iid,
                                     "date": hit.date,
                                 })
                                 if iid and hit.speaker and iid not in collected_persons:
@@ -480,16 +480,16 @@ class MpChatService:
                     # ── Guard: arango_search without person/party filter ────────
                     if tool_name == "arango_search" and isinstance(tool_args, dict):
                         has_person = bool(
-                            tool_args.get("intressent_ids") or tool_args.get("people")
+                            tool_args.get("person_ids") or tool_args.get("people")
                         )
                         has_party = bool(tool_args.get("parties"))
                         if not has_person and not has_party:
                             tool_result_string += (
                                 f"\n\n[SYSTEMVARNING: Sökningen ovan filtrerade INTE på person "
-                                f"eller parti. Resultaten kan komma från vem som helst. "
-                                f"Sök igen med intressent_ids=[\"{self.intressent_id}\"] för "
-                                f"{self.person.get('namn','personen')}s egna anföranden, eller "
-                                f"parties=[\"{self.person.get('parti','')}\"] för partiets linje.]"
+                                f"eller party. Resultaten kan komma från vem som helst. "
+                                f"Sök igen med person_ids=[\"{self.person_id}\"] för "
+                                f"{self.person.get('name','personen')}s egna anföranden, eller "
+                                f"parties=[\"{self.person.get('party','')}\"] för partiets linje.]"
                             )
 
                     # ── Guard: snippets only → must fetch full text before citing ──
@@ -527,10 +527,10 @@ class MpChatService:
                         "Du får INTE fråga användaren om du ska söka mer — bara sök. "
                         "Du får INTE beskriva vad du planerar att göra. "
                         "Om materialet är otillräckligt: anropa arango_search med parties eller vector_search direkt. "
-                        "I slutsvaret: svara som {namn} i första person och inkludera [src:ID]-citat direkt efter varje påstående. "
+                        "I slutsvaret: svara som {name} i första person och inkludera [src:ID]-citat direkt efter varje påstående. "
                         "ID:n hittar du i verktygsresultaten ovan (t.ex. [src:H40911]). "
                         "Avsluta INTE med en separat 'Källor'-sektion."
-                    ).format(namn=self.person.get("tilltalsnamn") or self.person.get("namn", ""))
+                    ).format(name=self.person.get("first_name") or self.person.get("name", ""))
                     tool_result_messages[-1]["content"] += reminder
 
                 current_messages.extend(tool_result_messages)
@@ -619,33 +619,33 @@ class MpChatService:
 
     def _get_unique_name_persons(self, persons: Dict[str, Dict]) -> Dict[str, Dict]:
         """
-        Look up each collected person by intressent_id to get the canonical DB name,
+        Look up each collected person by person_id to get the canonical DB name,
         then keep only those whose name is unique in the people table.
         """
         if not persons:
             return {}
         from postgres_client import pg
         iids = list(persons.keys())
-        print_yellow(f"[MpChat] Person lookup: {len(iids)} intressent_ids: {iids}")
+        print_yellow(f"[MpChat] Person lookup: {len(iids)} person_ids: {iids}")
         try:
             id_rows = pg.execute(
-                "SELECT intressent_id, namn, parti FROM people WHERE intressent_id = ANY(%s)",
+                "SELECT person_id, name, party FROM people WHERE person_id = ANY(%s)",
                 (iids,)
             )
             if not id_rows:
                 return {}
-            names = [r["namn"] for r in id_rows]
+            names = [r["name"] for r in id_rows]
             unique_rows = pg.execute(
-                "SELECT namn FROM people WHERE LOWER(namn) = ANY(%s) GROUP BY namn HAVING COUNT(*) = 1",
+                "SELECT name FROM people WHERE LOWER(name) = ANY(%s) GROUP BY name HAVING COUNT(*) = 1",
                 ([n.lower() for n in names],)
             )
-            unique_names_lower = {r["namn"].lower() for r in unique_rows}
+            unique_names_lower = {r["name"].lower() for r in unique_rows}
             result: Dict[str, Dict] = {}
             for row in id_rows:
-                if row["namn"].lower() in unique_names_lower:
-                    result[row["intressent_id"]] = {
-                        "name": row["namn"],
-                        "party": row["parti"] or ""
+                if row["name"].lower() in unique_names_lower:
+                    result[row["person_id"]] = {
+                        "name": row["name"],
+                        "party": row["party"] or ""
                     }
             print_green(f"[MpChat] {len(result)} persons will be linked: {[v['name'] for v in result.values()]}")
             return result
@@ -685,7 +685,7 @@ class MpChatService:
             body = pattern.sub(make_replace(), body)
 
         persons_list = [
-            {"intressent_id": iid, **unique_persons[iid]}
+            {"person_id": iid, **unique_persons[iid]}
             for iid in used_ids
         ]
         return persons_list, body + tail

@@ -160,7 +160,7 @@ export function MentionInput({
             .map((entry) =>
               typeof entry === "string"
                 ? { name: entry }
-                : { name: entry.name ?? entry.namn ?? "", _key: entry._key ?? (entry as any)?.key },
+                : { name: entry.name ?? entry.name ?? "", _key: entry._key ?? (entry as any)?.key },
             )
             .filter((entry) => entry.name.length > 0);
           

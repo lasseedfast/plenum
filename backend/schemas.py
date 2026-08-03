@@ -46,7 +46,7 @@ class TalkHit(BaseModel):
     party: Optional[str] = None
     url_audio: Optional[str] = None
     audio_start_seconds: Optional[int] = None
-    intressent_id: Optional[str] = None
+    person_id: Optional[str] = None
     
     class Config:
         # Allow extra fields from the database that we don't explicitly define

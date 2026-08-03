@@ -3,9 +3,9 @@ LLM tool implementations for the Riksdagen chat service.
 
 Surface exposed to the orchestrator LLM:
   - arango_search         → PostgreSQL full-text + metadata filters (SearchService)
-  - vector_search         → unified chunk + summary semantic search, merged by talk_id
+  - vector_search         → unified chunk + summary semantic search, merged by speech_id
   - vector_search_debates → debate-level discovery (navigation, not citable)
-  - fetch_debate          → drill into one debate, return its talks with summaries
+  - fetch_debate          → drill into one debate, return its speeches with summaries
   - fetch_documents       → full-text retrieval by id list
   - read_documents_for    → focused sub-agent read: full texts in, short answer out
   - database_query        → direct SQL for aggregations
@@ -40,7 +40,7 @@ from prompts_loader import load_prompt
 class HitDocument(BaseModel):
     """Normalized representation of a search hit across tools."""
 
-    id: Optional[str] = Field(default=None, description="Document id (e.g. 'talks/H40911')")
+    id: Optional[str] = Field(default=None, description="Document id (e.g. 'speeches/H40911')")
     key: Optional[str] = Field(default=None, description="Document key without collection prefix.")
     speaker: Optional[str] = Field(default=None)
     party: Optional[str] = Field(default=None)
@@ -168,119 +168,119 @@ def database_query(sql: str) -> str:
     
     DATABASE SCHEMA:
     
-    talks table:
+    speeches table:
       id (TEXT)              - Speech ID (e.g. 'H40911-1')
-      talare (TEXT)          - Speaker name
-      parti (TEXT)           - Party code (S, M, V, KD, C, MP, SD, L, FP)
+      speaker_name (TEXT)          - Speaker name
+      party (TEXT)           - Party code (S, M, V, KD, C, MP, SD, L, FP)
       year (INT)             - Year of speech
-      datum (DATE)           - Date of speech (cast to text: datum::text)
-      intressent_id (TEXT)   - Speaker ID (join key to people table)
-      kammaraktivitet (TEXT) - Debate type/chamber activity
-      anforandetext (TEXT)   - Full speech text (use search_vector for searching)
+      date (DATE)           - Date of speech (cast to text: date::text)
+      person_id (TEXT)   - Speaker ID (join key to people table)
+      activity_type (TEXT) - Debate type/chamber activity
+      text (TEXT)   - Full speech text (use search_vector for searching)
       summary (TEXT)         - Speech summary
-      anforande_nummer (INT) - Speech number within debate
+      sequence (INT) - Speech number within debate
       debate (TEXT)          - Debate name
-      replik (TEXT)          - Reply indicator
+      is_reply (TEXT)          - Reply indicator
       tags (TEXT[])          - Tagged topics
-      rel_dok_id (TEXT)      - Related document ID
-      titel (TEXT)           - Speech title
+      related_doc_id (TEXT)      - Related document ID
+      title (TEXT)           - Speech title
     
     people table:
-      intressent_id (TEXT)   - Speaker ID (join key to talks)
-      namn (TEXT)            - Canonical speaker name
-      parti (TEXT)           - Party affiliation
-      fodd_ar (INT)          - Birth year
-      kon (TEXT)             - Gender
-      aktiv (BOOL)           - Active status
-      valkrets (TEXT)        - Electoral district
+      person_id (TEXT)   - Speaker ID (join key to speeches)
+      name (TEXT)            - Canonical speaker name
+      party (TEXT)           - Party affiliation
+      birth_year (INT)          - Birth year
+      gender (TEXT)             - Gender
+      active (BOOL)           - Active status
+      constituency (TEXT)        - Electoral district
 
     debates table:
-      debate (TEXT, PK)      - Debate id of form "{YYYY-MM-DD}:{n}", matches talks.debate
-      datum (DATE)           - Debate date (cast to text: datum::text)
+      debate (TEXT, PK)      - Debate id of form "{YYYY-MM-DD}:{n}", matches speeches.debate
+      date (DATE)           - Debate date (cast to text: date::text)
       summary (TEXT)         - LLM-generated debate summary
-      num_talks (INT)        - Number of talks in the debate
+      num_talks (INT)        - Number of speeches in the debate
       talk_ids (TEXT[])      - Array of talk ids in the debate
       Note: some rows have NULL summary/summary_embedding (still backfilling).
 
-    motions table (motioner — written proposals from MPs):
-      dok_id (TEXT, PK)      - Motion id (e.g. 'HD02846')
-      rm (TEXT)              - Riksmöte (e.g. '2022/23')
+    documents table (motioner — written proposals from MPs):
+      doc_id (TEXT, PK)      - Motion id (e.g. 'HD02846')
+      session_label (TEXT)              - Riksmöte (e.g. '2022/23')
       year (INT)             - Riksmöte start year
-      datum (DATE)           - Submission date (cast to text: datum::text)
-      titel (TEXT)           - Motion title
-      subtyp (TEXT)          - e.g. 'Enskild motion', 'Kommittémotion', 'Partimotion'
-      organ (TEXT)           - Committee it was referred to (e.g. 'AU', 'UU')
+      date (DATE)           - Submission date (cast to text: date::text)
+      title (TEXT)           - Motion title
+      subtype (TEXT)          - e.g. 'Enskild motion', 'Kommittémotion', 'Partimotion'
+      committee (TEXT)           - Committee it was referred to (e.g. 'AU', 'UU')
       status (TEXT)          - e.g. 'Klar', 'Inkommen'
       parties (TEXT[])       - Party codes of all authors (use && for overlap: parties && ARRAY['S'])
       author_names (TEXT[])  - Author names in signing order
-      num_yrkanden (INT)     - Number of proposals in the motion
+      num_proposals (INT)     - Number of proposals in the motion
       text (TEXT)            - Full motion text (use search_vector for searching)
-      search_vector          - FTS index over titel + yrkanden + text: search_vector @@ websearch_to_tsquery('swedish', ...)
+      search_vector          - FTS index over title + yrkanden + text: search_vector @@ websearch_to_tsquery('swedish', ...)
 
-    motion_authors table (one row per signatory):
-      dok_id (TEXT)          - Join key to motions
-      intressent_id (TEXT)   - Join key to people (may be NULL for pre-2000 motions)
-      namn (TEXT)            - Author name
-      partibet (TEXT)        - Party code
+    document_authors table (one row per signatory):
+      doc_id (TEXT)          - Join key to documents
+      person_id (TEXT)   - Join key to people (may be NULL for pre-2000 documents)
+      name (TEXT)            - Author name
+      party (TEXT)        - Party code
       ordinal (INT)          - Signing order (0 = first author)
 
-    motion_yrkanden table (one row per formal proposal/yrkande — condensed & precise):
-      id (TEXT, PK)          - "{dok_id}:{ordinal}"
-      dok_id (TEXT)          - Join key to motions
-      nummer (TEXT)          - Proposal number as stated in the motion
-      lydelse (TEXT)         - The proposal text itself (short, to the point)
-      utskottet (TEXT)       - Committee proposal (e.g. 'Avslag')
-      kammaren (TEXT)        - Chamber decision (e.g. 'Avslag'/'Bifall')
-      behandlas_i (TEXT)     - Committee report where handled
+    document_proposals table (one row per formal proposal/yrkande — condensed & precise):
+      id (TEXT, PK)          - "{doc_id}:{ordinal}"
+      doc_id (TEXT)          - Join key to documents
+      number (TEXT)          - Proposal number as stated in the motion
+      text (TEXT)         - The proposal text itself (short, to the point)
+      committee_recommendation (TEXT)       - Committee proposal (e.g. 'Avslag')
+      chamber_decision (TEXT)        - Chamber decision (e.g. 'Avslag'/'Bifall')
+      handled_in (TEXT)     - Committee report where handled
 
     CRITICAL NOTES:
     - Use ONLY the column names listed above (do NOT invent columns)
     - For full-text search, use: search_vector @@ websearch_to_tsquery('swedish', 'query')
-      This uses the GIN index (fast); do NOT use LIKE/ILIKE on anforandetext (slow + wrong results)
+      This uses the GIN index (fast); do NOT use LIKE/ILIKE on text (slow + wrong results)
     - websearch_to_tsquery supports: plain words, "quoted phrases", OR, - (exclude), Swedish stemming
     - NEVER put search_vector @@ tsquery in a SELECT or SUM/CASE — it runs per-row without
       the index and causes 30-60 s queries. If you need two FTS counts, use two CTEs with WHERE:
-        WITH a AS (SELECT id, parti FROM talks WHERE search_vector @@ tsquery('q1')),
-             b AS (SELECT id FROM talks WHERE search_vector @@ tsquery('q2'))
-        SELECT a.parti, COUNT(*) total, COUNT(b.id) matches FROM a LEFT JOIN b USING(id) GROUP BY 1
-    - Join talks and people: talks.intressent_id = people.intressent_id
-    - Include `intressent_id` in SELECT when querying talks to link back to speakers
+        WITH a AS (SELECT id, party FROM speeches WHERE search_vector @@ tsquery('q1')),
+             b AS (SELECT id FROM speeches WHERE search_vector @@ tsquery('q2'))
+        SELECT a.party, COUNT(*) total, COUNT(b.id) matches FROM a LEFT JOIN b USING(id) GROUP BY 1
+    - Join speeches and people: speeches.person_id = people.person_id
+    - Include `person_id` in SELECT when querying speeches to link back to speakers
     
     EXAMPLES:
     
       # Count speeches per party
-      SELECT parti, COUNT(*) AS cnt FROM talks GROUP BY parti ORDER BY cnt DESC
+      SELECT party, COUNT(*) AS cnt FROM speeches GROUP BY party ORDER BY cnt DESC
       
       # Top 10 speakers in a party
-      SELECT talare, COUNT(*) AS cnt FROM talks WHERE parti = 'M'
-        GROUP BY talare ORDER BY cnt DESC LIMIT 10
+      SELECT speaker_name, COUNT(*) AS cnt FROM speeches WHERE party = 'M'
+        GROUP BY speaker_name ORDER BY cnt DESC LIMIT 10
       
       # Speeches per year for a party, with speaker birth year
-      SELECT t.year, p.fodd_ar, COUNT(*) AS cnt
-        FROM talks t JOIN people p ON t.intressent_id = p.intressent_id
-        WHERE t.parti = 'S' AND t.year >= 2015
-        GROUP BY t.year, p.fodd_ar ORDER BY t.year
+      SELECT t.year, p.birth_year, COUNT(*) AS cnt
+        FROM speeches t JOIN people p ON t.person_id = p.person_id
+        WHERE t.party = 'S' AND t.year >= 2015
+        GROUP BY t.year, p.birth_year ORDER BY t.year
       
       # Count speeches mentioning a topic per party (using FTS with GIN index)
-      SELECT parti, COUNT(*) AS cnt FROM talks
+      SELECT party, COUNT(*) AS cnt FROM speeches
         WHERE search_vector @@ websearch_to_tsquery('swedish', 'artificiell intelligens OR AI')
-        GROUP BY parti ORDER BY cnt DESC
+        GROUP BY party ORDER BY cnt DESC
       
       # Count speeches about climate per year (FTS)
-      SELECT year, COUNT(*) AS cnt FROM talks
+      SELECT year, COUNT(*) AS cnt FROM speeches
         WHERE search_vector @@ websearch_to_tsquery('swedish', 'klimat')
         GROUP BY year ORDER BY year
 
-      # Count motions about nuclear power per party (any co-author's party counts)
-      SELECT unnest(parties) AS parti, COUNT(*) AS cnt FROM motions
+      # Count documents about nuclear power per party (any co-author's party counts)
+      SELECT unnest(parties) AS party, COUNT(*) AS cnt FROM documents
         WHERE search_vector @@ websearch_to_tsquery('swedish', 'kärnkraft')
-        GROUP BY parti ORDER BY cnt DESC
+        GROUP BY party ORDER BY cnt DESC
 
       # Most active motion authors in a year
-      SELECT a.namn, a.partibet, COUNT(*) AS cnt
-        FROM motion_authors a JOIN motions m ON a.dok_id = m.dok_id
+      SELECT a.name, a.party, COUNT(*) AS cnt
+        FROM document_authors a JOIN documents m ON a.doc_id = m.doc_id
         WHERE m.year = 2023 AND a.ordinal = 0
-        GROUP BY a.namn, a.partibet ORDER BY cnt DESC LIMIT 10
+        GROUP BY a.name, a.party ORDER BY cnt DESC LIMIT 10
 
     To surface results to the user as a stats card, call share_insight(sql="...", message="...")
     and pass the same SQL query; the backend re-executes it automatically.
@@ -293,33 +293,33 @@ def database_query(sql: str) -> str:
 
     import re as _re
 
-    # Guard: rewrite `anforandetext @@` → `search_vector @@`.
-    # The GIN index is on the stored tsvector column `search_vector`, not on `anforandetext`.
-    # Using `anforandetext @@ tsquery` triggers an implicit on-the-fly to_tsvector conversion
+    # Guard: rewrite `text @@` → `search_vector @@`.
+    # The GIN index is on the stored tsvector column `search_vector`, not on `text`.
+    # Using `text @@ tsquery` triggers an implicit on-the-fly to_tsvector conversion
     # with the default (not Swedish) text-search config → full table scan, 78+ seconds, empty results.
     _rewritten = _re.sub(
         r'\banforandetext\s*@@', 'search_vector @@', sql, flags=_re.IGNORECASE
     )
     if _rewritten != sql:
-        print_yellow(f"[database_query] Rewrote anforandetext @@ → search_vector @@ (uses GIN index)")
+        print_yellow(f"[database_query] Rewrote text @@ → search_vector @@ (uses GIN index)")
         sql = _rewritten
 
     # Guard: reject LIKE/ILIKE on full-text columns — these bypass the FTS index,
     # cause slow sequential scans, and produce wrong results (e.g. 'ai' matches
     # 'Thai', 'kai', 'Ukraine').  The correct operator is @@ with websearch_to_tsquery.
-    _text_cols = r"(anforandetext|summary)"
+    _text_cols = r"(text|summary)"
     if _re.search(rf"\b{_text_cols}\b.*?\bI?LIKE\b", sql, _re.IGNORECASE | _re.DOTALL) or \
        _re.search(rf"\bI?LIKE\b.*?\b{_text_cols}\b", sql, _re.IGNORECASE | _re.DOTALL):
         msg = (
-            "TOOL USAGE ERROR: Do not use LIKE or ILIKE on 'anforandetext' or 'summary' — "
+            "TOOL USAGE ERROR: Do not use LIKE or ILIKE on 'text' or 'summary' — "
             "it is slow and produces wrong results. "
             "To search speech content, use the FTS operator instead:\n"
             "  WHERE search_vector @@ websearch_to_tsquery('swedish', 'your query here')\n"
             "This uses the GIN index and supports AND, OR, phrase search, and Swedish stemming. "
             "Example for counting speeches about AI per party:\n"
-            "  SELECT parti, COUNT(*) AS cnt FROM talks\n"
+            "  SELECT party, COUNT(*) AS cnt FROM speeches\n"
             "  WHERE search_vector @@ websearch_to_tsquery('swedish', 'artificiell intelligens OR AI')\n"
-            "  GROUP BY parti ORDER BY cnt DESC"
+            "  GROUP BY party ORDER BY cnt DESC"
         )
         print_red(f"[database_query] Blocked LIKE on text column: {sql[:120]}")
         return msg
@@ -342,37 +342,37 @@ def database_query(sql: str) -> str:
     elif isinstance(rows, list) and len(rows) == 1:
         rows = rows[0]
 
-    # Enrich with intressent_id when rows have talare but no intressent_id.
+    # Enrich with person_id when rows have speaker_name but no person_id.
     # This lets the shadow communicator attach speaker portraits to stats insights,
-    # and gives the main LLM the IDs for future arango_search(intressent_ids=...) calls.
+    # and gives the main LLM the IDs for future arango_search(person_ids=...) calls.
     rows_list = rows if isinstance(rows, list) else ([rows] if isinstance(rows, dict) else [])
     if (
         rows_list
         and isinstance(rows_list[0], dict)
-        and "talare" in rows_list[0]
-        and "intressent_id" not in rows_list[0]
+        and "speaker_name" in rows_list[0]
+        and "person_id" not in rows_list[0]
     ):
-        names = list({r["talare"] for r in rows_list if isinstance(r, dict) and r.get("talare")})
+        names = list({r["speaker_name"] for r in rows_list if isinstance(r, dict) and r.get("speaker_name")})
         try:
             person_rows_extra = pg.execute(
-                "SELECT intressent_id, namn FROM people WHERE namn = ANY(%s)",
+                "SELECT person_id, name FROM people WHERE name = ANY(%s)",
                 (names,),
             )
-            name_to_iid = {r["namn"]: r["intressent_id"] for r in person_rows_extra}
+            name_to_iid = {r["name"]: r["person_id"] for r in person_rows_extra}
             if name_to_iid:
                 if isinstance(rows, list):
                     rows = [
-                        {**r, "intressent_id": name_to_iid[r["talare"]]}
-                        if isinstance(r, dict) and r.get("talare") in name_to_iid
+                        {**r, "person_id": name_to_iid[r["speaker_name"]]}
+                        if isinstance(r, dict) and r.get("speaker_name") in name_to_iid
                         else r
                         for r in rows
                     ]
-                elif isinstance(rows, dict) and rows.get("talare") in name_to_iid:
-                    rows = {**rows, "intressent_id": name_to_iid[rows["talare"]]}
+                elif isinstance(rows, dict) and rows.get("speaker_name") in name_to_iid:
+                    rows = {**rows, "person_id": name_to_iid[rows["speaker_name"]]}
                 rows_list = rows if isinstance(rows, list) else [rows]
-                print_yellow(f"[database_query] Enriched {len(name_to_iid)} rows with intressent_id")
+                print_yellow(f"[database_query] Enriched {len(name_to_iid)} rows with person_id")
         except Exception as e:
-            print_yellow(f"[database_query] intressent_id enrichment failed: {e}")
+            print_yellow(f"[database_query] person_id enrichment failed: {e}")
 
     # Store rows for ChatService to populate collected_persons before shadow fires.
     _tool_structured_result.set({"type": "db_rows", "rows": rows_list})
@@ -384,7 +384,7 @@ def database_query(sql: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# vector_search  (unified: chunks + summaries, merged by talk_id)
+# vector_search  (unified: speech_chunks + summaries, merged by speech_id)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @register_tool()
@@ -396,7 +396,7 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
       - chunk embeddings   → granular, quote-ready passages
       - summary embeddings → thematic, whole-speech gist
 
-    Results are merged by talk_id; when a talk is strong in both indexes it is
+    Results are merged by speech_id; when a talk is strong in both indexes it is
     returned once with the chunk passage as the snippet and the summary attached
     in metadata. Each hit is tagged with metadata["source_type"] ∈ {"chunk",
     "summary", "both"} so you can tell which signal fired.
@@ -416,7 +416,7 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
         limit: Number of merged hits to return (default 10).
 
     Returns:
-        HitsResponse with the top-limit talks scored by max(chunk, summary).
+        HitsResponse with the top-limit speeches scored by max(chunk, summary).
     """
     print_yellow(f"[Tools] vector_search → query='{query}' (top_k={limit})")
 
@@ -425,9 +425,9 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
 
     chunk_rows = pg.execute(
         """
-        SELECT id, talk_id, chunk_index, text,
+        SELECT id, speech_id, chunk_index, text,
                1 - (embedding <=> %s::vector) AS score
-        FROM chunks
+        FROM speech_chunks
         ORDER BY embedding <=> %s::vector
         LIMIT %s
         """,
@@ -438,7 +438,7 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
         """
         SELECT id, summary,
                1 - (summary_embedding <=> %s::vector) AS score
-        FROM talks
+        FROM speeches
         WHERE summary_embedding IS NOT NULL
         ORDER BY summary_embedding <=> %s::vector
         LIMIT %s
@@ -449,18 +449,18 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
     if not chunk_rows and not summary_rows:
         return ""
 
-    # Merge by talk_id. Per-talk keep the best chunk hit and the summary hit.
+    # Merge by speech_id. Per-talk keep the best chunk hit and the summary hit.
     merged: Dict[str, Dict[str, Any]] = {}
     for row in chunk_rows:
-        talk_id = row["talk_id"]
-        slot = merged.setdefault(talk_id, {})
+        speech_id = row["speech_id"]
+        slot = merged.setdefault(speech_id, {})
         if row["score"] > slot.get("chunk_score", -1):
             slot["chunk_score"] = row["score"]
             slot["chunk_index"] = row["chunk_index"]
             slot["chunk_text"] = row["text"]
     for row in summary_rows:
-        talk_id = row["id"]
-        slot = merged.setdefault(talk_id, {})
+        speech_id = row["id"]
+        slot = merged.setdefault(speech_id, {})
         slot["summary_score"] = row["score"]
         slot["summary_text"] = row["summary"]
 
@@ -474,8 +474,8 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
 
     talk_rows = pg.execute(
         """
-        SELECT id, talare, parti, datum::text AS datum, intressent_id, titel, debateurl
-        FROM talks
+        SELECT id, speaker_name, party, date::text AS date, person_id, title, url_video
+        FROM speeches
         WHERE id = ANY(%s::text[])
         """,
         (top_ids,),
@@ -483,9 +483,9 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
     talk_map = {row["id"]: row for row in talk_rows}
 
     hits: List[HitDocument] = []
-    for talk_id in top_ids:
-        data = merged[talk_id]
-        parent = talk_map.get(talk_id, {})
+    for speech_id in top_ids:
+        data = merged[speech_id]
+        parent = talk_map.get(speech_id, {})
         has_chunk = "chunk_text" in data
         has_summary = "summary_text" in data
         source_type = (
@@ -493,26 +493,26 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
         )
 
         if has_chunk:
-            # Neighbor chunks give the LLM a bit of context around the hit.
+            # Neighbor speech_chunks give the LLM a bit of context around the hit.
             neighbor_rows = pg.execute(
                 """
                 SELECT text, chunk_index
-                FROM chunks
-                WHERE talk_id = %s AND chunk_index IN (%s, %s, %s)
+                FROM speech_chunks
+                WHERE speech_id = %s AND chunk_index IN (%s, %s, %s)
                 ORDER BY chunk_index
                 """,
-                (talk_id, data["chunk_index"] - 1, data["chunk_index"], data["chunk_index"] + 1),
+                (speech_id, data["chunk_index"] - 1, data["chunk_index"], data["chunk_index"] + 1),
             )
             snippet = " ".join(r["text"] for r in neighbor_rows)
         else:
             snippet = (data.get("summary_text") or "")[:800]
 
         metadata: Dict[str, Any] = {
-            "talk_id": talk_id,
+            "speech_id": speech_id,
             "source_type": source_type,
-            "intressent_id": parent.get("intressent_id"),
-            "titel": parent.get("titel"),
-            "debateurl": parent.get("debateurl"),
+            "person_id": parent.get("person_id"),
+            "title": parent.get("title"),
+            "url_video": parent.get("url_video"),
         }
         if has_chunk:
             metadata["chunk_index"] = data["chunk_index"]
@@ -522,11 +522,11 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
 
         hits.append(
             HitDocument(
-                id=f"talks/{talk_id}",
-                key=talk_id,
-                speaker=parent.get("talare"),
-                party=parent.get("parti"),
-                date=str(parent.get("datum") or ""),
+                id=f"speeches/{speech_id}",
+                key=speech_id,
+                speaker=parent.get("speaker_name"),
+                party=parent.get("party"),
+                date=str(parent.get("date") or ""),
                 snippet=snippet,
                 score=data["score"],
                 metadata=metadata,
@@ -549,8 +549,8 @@ def vector_search_debates(query: str, limit: int = 5) -> HitsResponse:
     sessions, not individual speeches) by their LLM-written summaries.
 
     This is a NAVIGATION tool. Use it to locate interesting debates, then call
-    `fetch_debate(debate_id)` to see the talks inside. Do NOT cite a debate
-    directly — cite the individual talks you read via `fetch_debate`.
+    `fetch_debate(debate_id)` to see the speeches inside. Do NOT cite a debate
+    directly — cite the individual speeches you read via `fetch_debate`.
 
     Workflow:
         vector_search_debates("klimatmål 2045")
@@ -573,7 +573,7 @@ def vector_search_debates(query: str, limit: int = 5) -> HitsResponse:
 
     Returns:
         HitsResponse. Each hit uses the bare debate id (e.g. "2021-06-17:42");
-        `snippet` is the debate summary, metadata includes `num_talks` and `datum`.
+        `snippet` is the debate summary, metadata includes `num_talks` and `date`.
     """
     print_yellow(f"[Tools] vector_search_debates → query='{query}' (top_k={limit})")
 
@@ -581,7 +581,7 @@ def vector_search_debates(query: str, limit: int = 5) -> HitsResponse:
 
     rows = pg.execute(
         """
-        SELECT d.debate, d.datum::text AS datum, d.summary, d.num_talks,
+        SELECT d.debate, d.date::text AS date, d.summary, d.num_talks,
                1 - (d.summary_embedding <=> %s::vector) AS score
         FROM debates d
         WHERE d.summary_embedding IS NOT NULL
@@ -602,13 +602,13 @@ def vector_search_debates(query: str, limit: int = 5) -> HitsResponse:
             key=row["debate"],
             speaker=None,
             party=None,
-            date=str(row.get("datum") or ""),
+            date=str(row.get("date") or ""),
             snippet=(row.get("summary") or "")[:400],
             score=row.get("score"),
             metadata={
                 "kind": "debate",
                 "num_talks": row.get("num_talks"),
-                "datum": str(row.get("datum") or ""),
+                "date": str(row.get("date") or ""),
             },
         )
         for row in rows
@@ -620,7 +620,7 @@ def vector_search_debates(query: str, limit: int = 5) -> HitsResponse:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# fetch_debate  (drill down from a debate id to the talks inside)
+# fetch_debate  (drill down from a debate id to the speeches inside)
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Combined character budget for talk summaries in the response. If the full set
@@ -632,27 +632,27 @@ FETCH_DEBATE_SUMMARY_BUDGET_CHARS = 7000
 @register_tool()
 def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
     """
-    Look up a single debate by its id and return a list of its talks with
+    Look up a single debate by its id and return a list of its speeches with
     per-talk summaries. Registers each returned talk as a citable source.
 
     Typical flow: call `vector_search_debates(query)` to discover relevant
     debate ids, then call `fetch_debate(debate_id, query=query)` on the best
-    match. Passing the same `query` lets the tool rank talks by semantic
+    match. Passing the same `query` lets the tool rank speeches by semantic
     relevance when the debate is too long to return in full.
 
     Args:
         debate_id: Debate id of the form "{YYYY-MM-DD}:{n}" (e.g. "2021-06-17:42").
         query: Optional search query. When the debate's combined talk summaries
-            exceed the response budget, talks are ranked by embedding distance
+            exceed the response budget, speeches are ranked by embedding distance
             to this query and only the most relevant ones are returned
             (presented in chronological order). Strongly recommended for long
             debates — without it, a truncated chronological slice is returned.
 
     Returns:
         dict with keys:
-          debate_id, datum, summary, num_talks,
-          talks: [{id, talare, parti, intressent_id, summary}, ...],
-          note (optional): present when not all talks are returned; explains
+          debate_id, date, summary, num_talks,
+          speeches: [{id, speaker_name, party, person_id, summary}, ...],
+          note (optional): present when not all speeches are returned; explains
             how many were omitted and on what basis.
     """
     print_yellow(
@@ -662,7 +662,7 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
 
     debate_rows = pg.execute(
         """
-        SELECT debate, datum::text AS datum, summary, num_talks, talk_ids
+        SELECT debate, date::text AS date, summary, num_talks, talk_ids
         FROM debates
         WHERE debate = %s
         """,
@@ -676,11 +676,11 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
 
     talk_rows = pg.execute(
         """
-        SELECT id, anforande_nummer, talare, parti, intressent_id, summary,
-               datum::text AS datum, titel, debateurl
-        FROM talks
+        SELECT id, sequence, speaker_name, party, person_id, summary,
+               date::text AS date, title, url_video
+        FROM speeches
         WHERE id = ANY(%s::text[])
-        ORDER BY anforande_nummer ASC
+        ORDER BY sequence ASC
         """,
         (talk_ids,),
     )
@@ -695,13 +695,13 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
         running = 0
 
         if query:
-            # Rank talks in this debate by embedding distance to the query,
+            # Rank speeches in this debate by embedding distance to the query,
             # then keep the top-K whose summaries fit the budget.
             embedding = pg.make_embeddings([query])[0]
             ranked = pg.execute(
                 """
                 SELECT id, (summary_embedding <=> %s::vector) AS distance
-                FROM talks
+                FROM speeches
                 WHERE id = ANY(%s::text[])
                   AND summary_embedding IS NOT NULL
                 ORDER BY distance ASC
@@ -723,7 +723,7 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
                 ranking_method = "relevance"
 
         if not chosen_ids:
-            # Either no query was given, or no talks in this debate have
+            # Either no query was given, or no speeches in this debate have
             # summary_embedding populated yet. Fall back to chronological.
             running = 0
             for r in talk_rows:
@@ -740,9 +740,9 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
 
         if ranking_method == "relevance":
             note = (
-                f"Debate has {len(talk_rows)} talks (combined summaries "
+                f"Debate has {len(talk_rows)} speeches (combined summaries "
                 f"{total_summary_chars} chars). Returned the {len(trimmed_rows)} "
-                f"most relevant to query '{query}'; {omitted} talks omitted. "
+                f"most relevant to query '{query}'; {omitted} speeches omitted. "
                 f"Use fetch_documents with specific ids for full texts."
             )
         else:
@@ -752,39 +752,39 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
                 else "ranked chronologically — pass `query` for relevance ranking"
             )
             note = (
-                f"Debate has {len(talk_rows)} talks (combined summaries "
+                f"Debate has {len(talk_rows)} speeches (combined summaries "
                 f"{total_summary_chars} chars). Returned the first "
-                f"{len(trimmed_rows)} summarised talks ({reason}); "
-                f"{omitted} talks omitted. Use fetch_documents for full texts."
+                f"{len(trimmed_rows)} summarised speeches ({reason}); "
+                f"{omitted} speeches omitted. Use fetch_documents for full texts."
             )
 
-    # Build a compact dict for the LLM; register the talks as provenance sources.
+    # Build a compact dict for the LLM; register the speeches as provenance sources.
     talks_out: List[Dict[str, Any]] = []
     hits: List[HitDocument] = []
     for row in trimmed_rows:
-        talk_id = row["id"]
+        speech_id = row["id"]
         summary_text = row.get("summary") or ""
         talks_out.append(
             {
-                "id": talk_id,
-                "talare": row.get("talare"),
-                "parti": row.get("parti"),
-                "intressent_id": row.get("intressent_id"),
+                "id": speech_id,
+                "speaker_name": row.get("speaker_name"),
+                "party": row.get("party"),
+                "person_id": row.get("person_id"),
                 "summary": summary_text,
             }
         )
         hits.append(
             HitDocument(
-                id=f"talks/{talk_id}",
-                key=talk_id,
-                speaker=row.get("talare"),
-                party=row.get("parti"),
-                date=str(row.get("datum") or ""),
+                id=f"speeches/{speech_id}",
+                key=speech_id,
+                speaker=row.get("speaker_name"),
+                party=row.get("party"),
+                date=str(row.get("date") or ""),
                 snippet=summary_text[:500],
                 metadata={
-                    "intressent_id": row.get("intressent_id"),
-                    "titel": row.get("titel"),
-                    "debateurl": row.get("debateurl"),
+                    "person_id": row.get("person_id"),
+                    "title": row.get("title"),
+                    "url_video": row.get("url_video"),
                     "debate": debate_id,
                 },
             )
@@ -795,10 +795,10 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
 
     result: Dict[str, Any] = {
         "debate_id": debate.get("debate"),
-        "datum": debate.get("datum"),
+        "date": debate.get("date"),
         "summary": debate.get("summary"),
         "num_talks": debate.get("num_talks") or len(talk_ids),
-        "talks": talks_out,
+        "speeches": talks_out,
     }
     if note:
         result["note"] = note
@@ -812,7 +812,7 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
 @register_tool()
 def fetch_documents(_ids: list[str], collection: str = "", fields: list = []) -> list:
     """
-    Fetch full documents by their id from the talks table.
+    Fetch full documents by their id from the speeches table.
 
     Use this tool when:
     - arango_search or vector_search returned _ids and you need the full speech text.
@@ -823,14 +823,14 @@ def fetch_documents(_ids: list[str], collection: str = "", fields: list = []) ->
     - To count/aggregate → use database_query
 
     Args:
-        _ids: List of document IDs (e.g. ["talks/H40911", "talks/H40912"] or bare keys)
-        collection: Optional prefix to add to bare IDs (e.g. "talks")
+        _ids: List of document IDs (e.g. ["speeches/H40911", "speeches/H40912"] or bare keys)
+        collection: Optional prefix to add to bare IDs (e.g. "speeches")
         fields: Optional list of field names to return (empty = common fields)
 
     Returns:
         List of document dicts, or error message string.
     """
-    # Normalize IDs: strip "talks/" prefix
+    # Normalize IDs: strip "speeches/" prefix
     talk_ids = []
     for i in _ids:
         if "/" in i:
@@ -846,25 +846,25 @@ def fetch_documents(_ids: list[str], collection: str = "", fields: list = []) ->
     # Default fields if none specified
     if fields:
         allowed = {
-            "id", "anforandetext", "anforande_nummer", "kammaraktivitet",
-            "talare", "datum", "year", "parti", "intressent_id", "titel",
-            "rel_dok_id", "debate", "replik", "summary", "tags",
+            "id", "text", "sequence", "activity_type",
+            "speaker_name", "date", "year", "party", "person_id", "title",
+            "related_doc_id", "debate", "is_reply", "summary", "tags",
         }
-        # Cast datum to text so Python receives a string, not a date object
+        # Cast date to text so Python receives a string, not a date object
         def _col(f: str) -> str:
-            return "datum::text AS datum" if f == "datum" else f
+            return "date::text AS date" if f == "date" else f
         select = ", ".join(_col(f) for f in fields if f in allowed or f.startswith("_"))
         if not select:
-            select = "id, anforandetext, talare, parti, datum::text AS datum, year, kammaraktivitet"
+            select = "id, text, speaker_name, party, date::text AS date, year, activity_type"
     else:
         select = (
-            "id, anforandetext, anforande_nummer, kammaraktivitet, "
-            "talare, datum::text AS datum, year, parti, intressent_id, titel, "
-            "rel_dok_id, debate, replik, summary, tags"
+            "id, text, sequence, activity_type, "
+            "speaker_name, date::text AS date, year, party, person_id, title, "
+            "related_doc_id, debate, is_reply, summary, tags"
         )
 
     rows = pg.execute(
-        f"SELECT {select} FROM talks WHERE id = ANY(%s::text[])",
+        f"SELECT {select} FROM speeches WHERE id = ANY(%s::text[])",
         (talk_ids,),
     )
 
@@ -872,9 +872,9 @@ def fetch_documents(_ids: list[str], collection: str = "", fields: list = []) ->
     result = []
     for row in rows:
         doc = dict(row)
-        talk_id = doc.get("id", "")
-        doc["_id"] = f"talks/{talk_id}"
-        doc["_key"] = talk_id
+        speech_id = doc.get("id", "")
+        doc["_id"] = f"speeches/{speech_id}"
+        doc["_key"] = speech_id
         result.append(doc)
 
     # Publish structured provenance so ChatService can track these as sources
@@ -884,15 +884,15 @@ def fetch_documents(_ids: list[str], collection: str = "", fields: list = []) ->
             HitDocument(
                 id=doc.get("_id"),
                 key=doc.get("_key"),
-                speaker=doc.get("talare"),
-                party=doc.get("parti"),
-                date=doc.get("datum"),
-                text=doc.get("anforandetext", ""),
-                snippet=doc.get("summary") or (doc.get("anforandetext") or "")[:300],
+                speaker=doc.get("speaker_name"),
+                party=doc.get("party"),
+                date=doc.get("date"),
+                text=doc.get("text", ""),
+                snippet=doc.get("summary") or (doc.get("text") or "")[:300],
                 metadata={
-                    "intressent_id": doc.get("intressent_id"),
-                    "titel": doc.get("titel"),
-                    "kammaraktivitet": doc.get("kammaraktivitet"),
+                    "person_id": doc.get("person_id"),
+                    "title": doc.get("title"),
+                    "activity_type": doc.get("activity_type"),
                 },
             )
         )
@@ -951,8 +951,8 @@ def read_documents_for(question: str, _ids: list[str]) -> str:
         question: One concrete question in Swedish, e.g.
             "Vilka argument anför talarna mot höjd bensinskatt?"
         _ids: 1-6 document IDs from earlier search results
-            (e.g. ["H40911", "talks/H40912"]). Motion ids from search_motions
-            (e.g. "motions/HD02846") work too — the full motion text is read.
+            (e.g. ["H40911", "speeches/H40912"]). Motion ids from search_motions
+            (e.g. "documents/HD02846") work too — the full motion text is read.
 
     Returns:
         A short Swedish answer grounded in the documents, with [src:ID] tags,
@@ -971,31 +971,31 @@ def read_documents_for(question: str, _ids: list[str]) -> str:
     talk_ids = talk_ids[:_READER_MAX_DOCS]
 
     rows = pg.execute(
-        "SELECT id, anforandetext, talare, parti, datum::text AS datum, titel, "
-        "intressent_id, summary FROM talks WHERE id = ANY(%s::text[])",
+        "SELECT id, text, speaker_name, party, date::text AS date, title, "
+        "person_id, summary FROM speeches WHERE id = ANY(%s::text[])",
         (talk_ids,),
     )
     by_id = {r["id"]: dict(r) for r in rows}
 
-    # Ids not found among talks may be motions — read those too.
+    # Ids not found among speeches may be documents — read those too.
     missing_ids = [tid for tid in talk_ids if tid not in by_id]
     if missing_ids:
         motion_rows = pg.execute(
-            "SELECT dok_id, text, titel, parties, author_names, datum::text AS datum "
-            "FROM motions WHERE dok_id = ANY(%s::text[])",
+            "SELECT doc_id, text, title, parties, author_names, date::text AS date "
+            "FROM documents WHERE doc_id = ANY(%s::text[])",
             (missing_ids,),
         )
         for r in motion_rows:
             names = r.get("author_names") or []
             speaker = ", ".join(names[:3]) + (" m.fl." if len(names) > 3 else "")
-            by_id[r["dok_id"]] = {
-                "id": r["dok_id"],
-                "anforandetext": r.get("text"),
-                "talare": speaker,
-                "parti": "/".join(r.get("parties") or []),
-                "datum": r.get("datum"),
-                "titel": r.get("titel"),
-                "intressent_id": None,
+            by_id[r["doc_id"]] = {
+                "id": r["doc_id"],
+                "text": r.get("text"),
+                "speaker_name": speaker,
+                "party": "/".join(r.get("parties") or []),
+                "date": r.get("date"),
+                "title": r.get("title"),
+                "person_id": None,
                 "summary": None,
                 "_kind": "motion",
             }
@@ -1008,39 +1008,39 @@ def read_documents_for(question: str, _ids: list[str]) -> str:
         if doc is None:
             blocks.append(f"== [src:{tid}] ==\n(dokumentet kunde inte laddas)")
             continue
-        text = (doc.get("anforandetext") or "").strip()
+        text = (doc.get("text") or "").strip()
         if not text:
             blocks.append(f"== [src:{tid}] ==\n(dokumentet saknar text)")
             continue
         if len(text) > budget:
             text = text[:budget] + "\n\n[...trunkerat...]"
         header_parts = [f"[src:{tid}]"]
-        if doc.get("talare"):
-            speaker = doc["talare"]
-            if doc.get("parti"):
-                speaker += f" ({doc['parti']})"
+        if doc.get("speaker_name"):
+            speaker = doc["speaker_name"]
+            if doc.get("party"):
+                speaker += f" ({doc['party']})"
             header_parts.append(speaker)
-        if doc.get("datum"):
-            header_parts.append(doc["datum"])
+        if doc.get("date"):
+            header_parts.append(doc["date"])
         header = "== " + " | ".join(header_parts)
-        if doc.get("titel"):
-            header += f" == {doc['titel']}"
+        if doc.get("title"):
+            header += f" == {doc['title']}"
         else:
             header += " =="
         blocks.append(f"{header}\n{text}")
-        collection = "motions" if doc.get("_kind") == "motion" else "talks"
+        collection = "documents" if doc.get("_kind") == "motion" else "speeches"
         hits.append(
             HitDocument(
                 id=f"{collection}/{tid}",
                 key=tid,
-                speaker=doc.get("talare"),
-                party=doc.get("parti"),
-                date=doc.get("datum"),
-                text=doc.get("anforandetext", "")[:3000],
-                snippet=doc.get("summary") or (doc.get("anforandetext") or "")[:300],
+                speaker=doc.get("speaker_name"),
+                party=doc.get("party"),
+                date=doc.get("date"),
+                text=doc.get("text", "")[:3000],
+                snippet=doc.get("summary") or (doc.get("text") or "")[:300],
                 metadata={
-                    "intressent_id": doc.get("intressent_id"),
-                    "titel": doc.get("titel"),
+                    "person_id": doc.get("person_id"),
+                    "title": doc.get("title"),
                 },
             )
         )
@@ -1142,10 +1142,10 @@ def arango_search(
     limit: int = 20,
     return_snippets: bool = False,
     focus_ids: Optional[List[str]] = None,
-    intressent_ids: Optional[Union[str, List[str], bool]] = None,
+    person_ids: Optional[Union[str, List[str], bool]] = None,
 ) -> "SearchHitsResult":
     """
-    Perform a full-text and metadata search in the Riksdagen 'talks' table using PostgreSQL FTS.
+    Perform a full-text and metadata search in the Riksdagen 'speeches' table using PostgreSQL FTS.
     
     Args:
         query: The search string (supports AND, OR, NOT, phrases in quotes, år:2018-2022).
@@ -1156,7 +1156,7 @@ def arango_search(
         limit: Maximum number of results (default 20).
         return_snippets: If True, return only snippets with highlights.
         focus_ids: Restrict search to these specific document ids.
-        intressent_ids: An array of numeric strings (e.g., ['0448485371626', '0448485371627']). NEVER guess or make up an ID. If you do not know the exact numeric ID, you MUST use the people parameter instead."
+        person_ids: An array of numeric strings (e.g., ['0448485371626', '0448485371627']). NEVER guess or make up an ID. If you do not know the exact numeric ID, you MUST use the people parameter instead."
 
     Returns:
         SearchHitsResult with hits and search metadata.
@@ -1174,17 +1174,17 @@ def arango_search(
       - Fuzzy/semantic similarity → use vector_search
       - Exact aggregations, joins, or structured metadata queries → use database_query
     """
-    # Validate intressent_ids: they must be purely numeric strings.
+    # Validate person_ids: they must be purely numeric strings.
     # If the model passes a placeholder like "PERS_ID_FOR_X", reject the whole call
     # so it knows to use `people=` instead or wait until it has real IDs from results.
-    if intressent_ids:
+    if person_ids:
         ids_list = (
-            json.loads(intressent_ids) if isinstance(intressent_ids, str) else intressent_ids
+            json.loads(person_ids) if isinstance(person_ids, str) else person_ids
         )
         if isinstance(ids_list, list):
             bad = [sid for sid in ids_list if not str(sid).strip().isdigit()]
             if bad:
-                return f"ERROR: intressent_ids must be numeric strings (e.g. '0448485371626'). Invalid values: {bad}. Use the `people` parameter to search by name, or only pass intressent_ids you have seen in previous results."
+                return f"ERROR: person_ids must be numeric strings (e.g. '0448485371626'). Invalid values: {bad}. Use the `people` parameter to search by name, or only pass person_ids you have seen in previous results."
 
     args = _normalize_arango_search_args(
         query=query,
@@ -1193,7 +1193,7 @@ def arango_search(
         from_year=from_year,
         to_year=to_year,
         limit=limit,
-        speaker_ids=intressent_ids,
+        speaker_ids=person_ids,
     )
 
     class Payload:
@@ -1236,7 +1236,7 @@ def arango_search(
             limit=args["limit"],
             return_snippets=False,
             focus_ids=focus_id_list,
-            speaker_ids=intressent_ids,
+            speaker_ids=person_ids,
         ),
         include_snippets=True,
         return_snippets=False,
@@ -1252,12 +1252,12 @@ def arango_search(
     for item in results:
         if not isinstance(item, dict):
             continue
-        talk_id = item.get("_id", "")
+        speech_id = item.get("_id", "")
         if snippet_mode:
             # Only include snippet fields, not full text
             hits.append(HitDocument(
-                id=talk_id,
-                key=talk_id.removeprefix("talks/"),
+                id=speech_id,
+                key=speech_id.removeprefix("speeches/"),
                 speaker=item.get("speaker"),
                 party=item.get("party"),
                 date=item.get("date"),
@@ -1265,17 +1265,17 @@ def arango_search(
                 text=None,
                 score=item.get("bm25"),
                 metadata={
-                    "intressent_id": item.get("intressent_id"),
-                    "debateurl": item.get("url_session") or item.get("debateurl"),
-                    "titel": item.get("titel"),
-                    "kammaraktivitet": item.get("kammaraktivitet"),
+                    "person_id": item.get("person_id"),
+                    "url_video": item.get("url_session") or item.get("url_video"),
+                    "title": item.get("title"),
+                    "activity_type": item.get("activity_type"),
                     "chunk_index": item.get("chunk_index", -1),
                 },
             ))
         else:
             hits.append(HitDocument(
-                id=talk_id,
-                key=talk_id.removeprefix("talks/"),
+                id=speech_id,
+                key=speech_id.removeprefix("speeches/"),
                 speaker=item.get("speaker"),
                 party=item.get("party"),
                 date=item.get("date"),
@@ -1283,10 +1283,10 @@ def arango_search(
                 text=item.get("text") or "",
                 score=item.get("bm25"),
                 metadata={
-                    "intressent_id": item.get("intressent_id"),
-                    "debateurl": item.get("url_session") or item.get("debateurl"),
-                    "titel": item.get("titel"),
-                    "kammaraktivitet": item.get("kammaraktivitet"),
+                    "person_id": item.get("person_id"),
+                    "url_video": item.get("url_session") or item.get("url_video"),
+                    "title": item.get("title"),
+                    "activity_type": item.get("activity_type"),
                     "chunk_index": item.get("chunk_index", -1),
                 },
             ))
@@ -1325,7 +1325,7 @@ def search_motions(
     limit: int = 20,
     return_snippets: bool = False,
     focus_ids: Optional[List[str]] = None,
-    intressent_ids: Optional[Union[str, List[str], bool]] = None,
+    person_ids: Optional[Union[str, List[str], bool]] = None,
 ) -> "SearchHitsResult":
     """
     Full-text and metadata search over MOTIONER (written proposals submitted by MPs),
@@ -1346,26 +1346,26 @@ def search_motions(
         limit: Maximum number of results (default 20).
         return_snippets: If True, return only snippets with highlights.
         focus_ids: Restrict search to these specific motion ids.
-        intressent_ids: An array of numeric strings (e.g., ['0448485371626']). NEVER guess
+        person_ids: An array of numeric strings (e.g., ['0448485371626']). NEVER guess
             or make up an ID. If you do not know the exact numeric ID, use `people` instead.
 
     Returns:
-        SearchHitsResult. Hit ids look like "motions/HD02846"; metadata includes titel,
-        organ (committee), rm (riksmöte) and num_yrkanden. Cite with [src:DOK_ID].
+        SearchHitsResult. Hit ids look like "documents/HD02846"; metadata includes title,
+        committee (committee), session_label (riksmöte) and num_proposals. Cite with [src:DOK_ID].
 
     When NOT to use:
       - Chamber speeches/debates → arango_search or vector_search
-      - Fuzzy/semantic similarity over motions → vector_search_motions
-      - Counts/aggregations → database_query (motions table)
+      - Fuzzy/semantic similarity over documents → vector_search_motions
+      - Counts/aggregations → database_query (documents table)
     """
-    if intressent_ids:
+    if person_ids:
         ids_list = (
-            json.loads(intressent_ids) if isinstance(intressent_ids, str) else intressent_ids
+            json.loads(person_ids) if isinstance(person_ids, str) else person_ids
         )
         if isinstance(ids_list, list):
             bad = [sid for sid in ids_list if not str(sid).strip().isdigit()]
             if bad:
-                return f"ERROR: intressent_ids must be numeric strings (e.g. '0448485371626'). Invalid values: {bad}. Use the `people` parameter to search by name, or only pass intressent_ids you have seen in previous results."
+                return f"ERROR: person_ids must be numeric strings (e.g. '0448485371626'). Invalid values: {bad}. Use the `people` parameter to search by name, or only pass person_ids you have seen in previous results."
 
     args = _normalize_arango_search_args(
         query=query,
@@ -1374,7 +1374,7 @@ def search_motions(
         from_year=from_year,
         to_year=to_year,
         limit=limit,
-        speaker_ids=intressent_ids,
+        speaker_ids=person_ids,
     )
 
     class Payload:
@@ -1413,7 +1413,7 @@ def search_motions(
             to_year=args["to_year"],
             limit=args["limit"],
             focus_ids=focus_id_list,
-            speaker_ids=intressent_ids,
+            speaker_ids=person_ids,
         ),
         include_snippets=True,
         return_snippets=False,
@@ -1429,21 +1429,21 @@ def search_motions(
     for item in results:
         if not isinstance(item, dict):
             continue
-        motion_id = item.get("_id", "")
+        doc_id = item.get("_id", "")
         metadata = {
             "kind": "motion",
-            "titel": item.get("titel"),
-            "rm": item.get("rm"),
-            "organ": item.get("organ"),
-            "subtyp": item.get("subtyp"),
-            "num_yrkanden": item.get("num_yrkanden"),
-            "debateurl": item.get("url_session"),
+            "title": item.get("title"),
+            "session_label": item.get("session_label"),
+            "committee": item.get("committee"),
+            "subtype": item.get("subtype"),
+            "num_proposals": item.get("num_proposals"),
+            "url_video": item.get("url_session"),
         }
         if not item.get("has_text"):
             metadata["note"] = "endast inskannad PDF — fulltext saknas"
         hits.append(HitDocument(
-            id=motion_id,
-            key=motion_id.removeprefix("motions/"),
+            id=doc_id,
+            key=doc_id.removeprefix("documents/"),
             speaker=item.get("speaker"),
             party=item.get("party"),
             date=item.get("date"),
@@ -1467,7 +1467,7 @@ def search_motions(
             f"NOTE: The full texts of these {len(hits)} results total {total_text_chars:,} characters "
             f"(exceeds 20 000), so only snippets are shown above. "
             "You can either:\n"
-            "  1. Pick specific motion IDs and call fetch_motion(dok_id) for the full text, or\n"
+            "  1. Pick specific motion IDs and call fetch_motion(doc_id) for the full text, or\n"
             "  2. Repeat the search with a lower `limit` to reduce the result set."
         )
         output = output + "\n\n---\n\n" + note
@@ -1486,34 +1486,34 @@ def vector_search_motions(query: str, limit: int = 10) -> HitsResponse:
     - You want to deepen speech-based findings with what MPs formally proposed
       and exact keywords may not appear in the motion text.
     - The user explicitly asks about motioner, or speeches gave no coverage.
-    - You want motions similar in meaning to a phrase or idea.
+    - You want documents similar in meaning to a phrase or idea.
 
     When NOT to use:
-    - Exact word/phrase matching in motions → search_motions
+    - Exact word/phrase matching in documents → search_motions
     - Chamber speeches → vector_search
     - Counts/aggregations → database_query
 
     Args:
         query: Natural-language description of the topic.
-        limit: Number of motions to return (default 10).
+        limit: Number of documents to return (default 10).
 
     Returns:
         HitsResponse with one hit per motion. The snippet is the best-matching
         yrkande (the motion's condensed formal proposal) when that is the
         strongest signal, otherwise the best full-text passage; metadata["matched"]
-        says which ("yrkande" or "text"). Hit ids look like "motions/HD02846";
+        says which ("yrkande" or "text"). Hit ids look like "documents/HD02846";
         cite with [src:DOK_ID].
     """
     print_yellow(f"[Tools] vector_search_motions → query='{query}' (top_k={limit})")
 
     query_vec = pg.make_embeddings([query])[0]
 
-    # Two semantic signals: full-text chunks (coverage) and yrkanden (condensed,
+    # Two semantic signals: full-text speech_chunks (coverage) and yrkanden (condensed,
     # to-the-point proposals). Merge per motion, keeping the best of each.
     chunk_rows = pg.execute(
         """
-        SELECT motion_id, chunk_index, 1 - (embedding <=> %s::vector) AS score
-        FROM motion_chunks
+        SELECT doc_id, chunk_index, 1 - (embedding <=> %s::vector) AS score
+        FROM document_chunks
         ORDER BY embedding <=> %s::vector
         LIMIT %s
         """,
@@ -1521,9 +1521,9 @@ def vector_search_motions(query: str, limit: int = 10) -> HitsResponse:
     )
     yrkande_rows = pg.execute(
         """
-        SELECT dok_id, nummer, lydelse, utskottet, kammaren,
+        SELECT doc_id, number, text, committee_recommendation, chamber_decision,
                1 - (embedding <=> %s::vector) AS score
-        FROM motion_yrkanden
+        FROM document_proposals
         WHERE embedding IS NOT NULL
         ORDER BY embedding <=> %s::vector
         LIMIT %s
@@ -1535,13 +1535,13 @@ def vector_search_motions(query: str, limit: int = 10) -> HitsResponse:
 
     merged: Dict[str, Dict[str, Any]] = {}
     for row in chunk_rows:
-        slot = merged.setdefault(row["motion_id"], {"score": -1})
+        slot = merged.setdefault(row["doc_id"], {"score": -1})
         if row["score"] > slot.get("chunk_score", -1):
             slot["chunk_score"] = row["score"]
             slot["chunk_index"] = row["chunk_index"]
         slot["score"] = max(slot["score"], row["score"])
     for row in yrkande_rows:
-        slot = merged.setdefault(row["dok_id"], {"score": -1})
+        slot = merged.setdefault(row["doc_id"], {"score": -1})
         if row["score"] > slot.get("yrkande_score", -1):
             slot["yrkande_score"] = row["score"]
             slot["yrkande"] = row
@@ -1551,19 +1551,19 @@ def vector_search_motions(query: str, limit: int = 10) -> HitsResponse:
 
     motion_rows = pg.execute(
         """
-        SELECT dok_id, titel, rm, organ, datum::text AS datum, year,
-               parties, author_names, num_yrkanden, dokument_url_html
-        FROM motions
-        WHERE dok_id = ANY(%s::text[])
+        SELECT doc_id, title, session_label, committee, date::text AS date, year,
+               parties, author_names, num_proposals, url_html
+        FROM documents
+        WHERE doc_id = ANY(%s::text[])
         """,
         (top_ids,),
     )
-    motion_map = {row["dok_id"]: row for row in motion_rows}
+    motion_map = {row["doc_id"]: row for row in motion_rows}
 
     hits: List[HitDocument] = []
-    for motion_id in top_ids:
-        data = merged[motion_id]
-        parent = motion_map.get(motion_id, {})
+    for doc_id in top_ids:
+        data = merged[doc_id]
+        parent = motion_map.get(doc_id, {})
 
         # Prefer the matching yrkande as the snippet — it is condensed and to the
         # point — falling back to the full-text chunk (with neighbours) otherwise.
@@ -1573,34 +1573,34 @@ def vector_search_motions(query: str, limit: int = 10) -> HitsResponse:
         )
         metadata: Dict[str, Any] = {
             "kind": "motion",
-            "titel": parent.get("titel"),
-            "rm": parent.get("rm"),
-            "organ": parent.get("organ"),
-            "num_yrkanden": parent.get("num_yrkanden"),
-            "debateurl": parent.get("dokument_url_html"),
+            "title": parent.get("title"),
+            "session_label": parent.get("session_label"),
+            "committee": parent.get("committee"),
+            "num_proposals": parent.get("num_proposals"),
+            "url_video": parent.get("url_html"),
         }
         if prefer_yrkande:
-            snippet = yrkande["lydelse"]
-            outcome = yrkande.get("kammaren") or yrkande.get("utskottet")
+            snippet = yrkande["text"]
+            outcome = yrkande.get("chamber_decision") or yrkande.get("committee_recommendation")
             if outcome:
                 snippet += f"  [beslut: {outcome}]"
             metadata["matched"] = "yrkande"
-            metadata["yrkande_nummer"] = yrkande.get("nummer")
+            metadata["yrkande_nummer"] = yrkande.get("number")
         elif "chunk_index" in data:
             neighbor_rows = pg.execute(
                 """
                 SELECT text, chunk_index
-                FROM motion_chunks
-                WHERE motion_id = %s AND chunk_index IN (%s, %s, %s)
+                FROM document_chunks
+                WHERE doc_id = %s AND chunk_index IN (%s, %s, %s)
                 ORDER BY chunk_index
                 """,
-                (motion_id, data["chunk_index"] - 1, data["chunk_index"], data["chunk_index"] + 1),
+                (doc_id, data["chunk_index"] - 1, data["chunk_index"], data["chunk_index"] + 1),
             )
             snippet = " ".join(r["text"] for r in neighbor_rows)
             metadata["matched"] = "text"
             metadata["chunk_index"] = data["chunk_index"]
         else:
-            snippet = yrkande["lydelse"] if yrkande else ""
+            snippet = yrkande["text"] if yrkande else ""
             metadata["matched"] = "yrkande" if yrkande else "text"
 
         author_names = parent.get("author_names") or []
@@ -1610,11 +1610,11 @@ def vector_search_motions(query: str, limit: int = 10) -> HitsResponse:
 
         hits.append(
             HitDocument(
-                id=f"motions/{motion_id}",
-                key=motion_id,
+                id=f"documents/{doc_id}",
+                key=doc_id,
                 speaker=speaker,
                 party="/".join(parent.get("parties") or []),
-                date=str(parent.get("datum") or ""),
+                date=str(parent.get("date") or ""),
                 snippet=snippet,
                 score=data["score"],
                 metadata=metadata,
@@ -1628,67 +1628,67 @@ def vector_search_motions(query: str, limit: int = 10) -> HitsResponse:
 
 # Keys worth surfacing from the raw dokforslag JSON per yrkande.
 _YRKANDE_KEYS = (
-    "nummer", "lydelse", "lydelse2", "utskottet", "kammaren",
-    "kammarbeslutstyp", "behandlas_i",
+    "number", "text", "lydelse2", "committee_recommendation", "chamber_decision",
+    "kammarbeslutstyp", "handled_in",
 )
 
 
 @register_tool()
-def fetch_motion(dok_id: str) -> dict:
+def fetch_motion(doc_id: str) -> dict:
     """
-    Fetch one motion by its dok_id: metadata, all authors, all yrkanden (proposals)
+    Fetch one motion by its doc_id: metadata, all authors, all yrkanden (proposals)
     with committee and chamber outcomes, and the full text.
 
     Typical flow: search_motions / vector_search_motions → pick a hit →
-    fetch_motion(dok_id) to read the yrkanden and full text.
+    fetch_motion(doc_id) to read the yrkanden and full text.
 
     Args:
-        dok_id: Motion id, e.g. "HD02846" or "motions/HD02846".
+        doc_id: Motion id, e.g. "HD02846" or "documents/HD02846".
 
     Returns:
         dict with keys:
-          dok_id, titel, undertitel, rm, beteckning, subtyp, organ, status, datum,
-          authors: [{namn, partibet, intressent_id, roll}, ...],
-          yrkanden: [{nummer, lydelse, utskottet, kammaren, behandlas_i}, ...]
-            (utskottet = committee proposal, kammaren = chamber decision,
-             behandlas_i = committee report where it was handled),
+          doc_id, title, subtitle, session_label, designation, subtype, committee, status, date,
+          authors: [{name, party, person_id, role}, ...],
+          yrkanden: [{number, text, committee_recommendation, chamber_decision, handled_in}, ...]
+            (committee_recommendation = committee proposal, chamber_decision = chamber decision,
+             handled_in = committee report where it was handled),
           text (truncated to ~30 000 chars),
-          pdf_url, url,
+          url_pdf, url,
           note (optional): present when the motion only exists as a scanned PDF.
     """
-    bare_id = dok_id.split("/", 1)[1] if "/" in dok_id else dok_id
-    print_yellow(f"[Tools] fetch_motion → dok_id='{bare_id}'")
+    bare_id = doc_id.split("/", 1)[1] if "/" in doc_id else doc_id
+    print_yellow(f"[Tools] fetch_motion → doc_id='{bare_id}'")
 
     rows = pg.execute(
         """
-        SELECT dok_id, titel, undertitel, rm, beteckning, subtyp, organ, status,
-               datum::text AS datum, year, text, has_text, forslag,
-               parties, author_names, pdf_url, dokument_url_html
-        FROM motions
-        WHERE dok_id = %s
+        SELECT doc_id, title, subtitle, session_label, designation, subtype, committee, status,
+               date::text AS date, year, text, has_text, proposals_raw,
+               parties, author_names, url_pdf, url_html
+        FROM documents
+        WHERE doc_id = %s
         """,
         (bare_id,),
     )
     if not rows:
-        return {"error": f"No motion found with dok_id '{bare_id}'."}
+        return {"error": f"No motion found with doc_id '{bare_id}'."}
     motion = rows[0]
 
     author_rows = pg.execute(
         """
-        SELECT namn, partibet, intressent_id, roll
-        FROM motion_authors
-        WHERE dok_id = %s
+        SELECT name, party, person_id, role
+        FROM document_authors
+        WHERE doc_id = %s
         ORDER BY ordinal
         """,
         (bare_id,),
     )
 
-    forslag = motion.get("forslag") or []
-    if isinstance(forslag, str):
-        forslag = json.loads(forslag)
+    proposals_raw = motion.get("proposals_raw") or []
+    if isinstance(proposals_raw, str):
+        proposals_raw = json.loads(proposals_raw)
     yrkanden = [
         {k: f.get(k) for k in _YRKANDE_KEYS if f.get(k) is not None}
-        for f in forslag
+        for f in proposals_raw
         if isinstance(f, dict)
     ]
 
@@ -1705,38 +1705,38 @@ def fetch_motion(dok_id: str) -> dict:
     # Register as citable source.
     _tool_structured_result.set(HitsResponse(hits=[
         HitDocument(
-            id=f"motions/{bare_id}",
+            id=f"documents/{bare_id}",
             key=bare_id,
             speaker=speaker,
             party="/".join(motion.get("parties") or []),
-            date=str(motion.get("datum") or ""),
+            date=str(motion.get("date") or ""),
             text=text[:3000],
-            snippet=(motion.get("titel") or "") + " — " + text[:300],
+            snippet=(motion.get("title") or "") + " — " + text[:300],
             metadata={
                 "kind": "motion",
-                "titel": motion.get("titel"),
-                "rm": motion.get("rm"),
-                "organ": motion.get("organ"),
-                "debateurl": motion.get("dokument_url_html"),
+                "title": motion.get("title"),
+                "session_label": motion.get("session_label"),
+                "committee": motion.get("committee"),
+                "url_video": motion.get("url_html"),
             },
         )
     ]))
 
     result: Dict[str, Any] = {
-        "dok_id": motion.get("dok_id"),
-        "titel": motion.get("titel"),
-        "undertitel": motion.get("undertitel"),
-        "rm": motion.get("rm"),
-        "beteckning": motion.get("beteckning"),
-        "subtyp": motion.get("subtyp"),
-        "organ": motion.get("organ"),
+        "doc_id": motion.get("doc_id"),
+        "title": motion.get("title"),
+        "subtitle": motion.get("subtitle"),
+        "session_label": motion.get("session_label"),
+        "designation": motion.get("designation"),
+        "subtype": motion.get("subtype"),
+        "committee": motion.get("committee"),
         "status": motion.get("status"),
-        "datum": motion.get("datum"),
+        "date": motion.get("date"),
         "authors": [dict(a) for a in author_rows],
         "yrkanden": yrkanden,
         "text": text,
-        "pdf_url": motion.get("pdf_url"),
-        "url": motion.get("dokument_url_html"),
+        "url_pdf": motion.get("url_pdf"),
+        "url": motion.get("url_html"),
     }
     if not motion.get("has_text"):
         result["note"] = (
@@ -1764,7 +1764,7 @@ def share_insight(
         message (str): Brief observation in Swedish (1–3 sentences). Be specific and concrete.
             Use this to put other insights in context. It appears as the header of the card
             and should explain what the attached data shows. If you refer to specific persons
-            in this message, make sure to include their intressent_id in speaker_ids so their
+            in this message, make sure to include their person_id in speaker_ids so their
             portraits can be highlighted visually.
         hit_ids (list[str]): Optional. Talk IDs to surface as a search card (backend fetches
             metadata). Pass the talk IDs (e.g. ["H40911", "H40912"]) you saw in a previous
@@ -1774,8 +1774,8 @@ def share_insight(
             stats tables). Re-pass the same SQL query you used in database_query (or a simplified
             variant). The backend re-executes it and builds the rows — you do NOT write rows=[]
             by hand.
-        speaker_ids (list[str]): Optional. intressent_id values for portrait highlights (to show
-            speaker portrait photos). List of intressent_id values for speakers you want to
+        speaker_ids (list[str]): Optional. person_id values for portrait highlights (to show
+            speaker portrait photos). List of person_id values for speakers you want to
             highlight visually. Always pair with speaker_ids_context to explain why they matter.
         speaker_ids_context (str): Optional. Caption for the speaker highlights (1–2 sentences
             explaining why these specific speakers are notable in this context).
@@ -1785,14 +1785,14 @@ def share_insight(
 
     Examples:
         >>> share_insight(
-        ...     message="60 % av SD:s AI-debatter 2019–2022 hölls av tre talare.",
+        ...     message="60 % av SD:s AI-debatter 2019–2022 hölls av tre speaker_name.",
         ...     speaker_ids=["0448485371626", "0448485371627", "0448485371628"],
-        ...     speaker_ids_context="Dessa tre talare stod för 60 % av SD:s AI-debatter 2019–2022.",
+        ...     speaker_ids_context="Dessa tre speaker_name stod för 60 % av SD:s AI-debatter 2019–2022.",
         ... )
 
         >>> share_insight(
         ...     message="Lista över politiker som nämnt 'artificiell intelligens' i sina tal, och hur många gånger var.",
-        ...     sql="SELECT talare, COUNT(*) AS cnt FROM talks WHERE anforandetext @@ websearch_to_tsquery('swedish', 'artificiell intelligens') GROUP BY talare ORDER BY cnt DESC",
+        ...     sql="SELECT speaker_name, COUNT(*) AS cnt FROM speeches WHERE text @@ websearch_to_tsquery('swedish', 'artificiell intelligens') GROUP BY speaker_name ORDER BY cnt DESC",
         ... )
 
         >>> share_insight(
@@ -1800,27 +1800,27 @@ def share_insight(
         ...     hit_ids=["H40911", "H40912", "H40913", "H40914", "H40915"],
         ... )
     """
-    # Resolve hit_ids → hits by querying the talks table (motions as fallback)
+    # Resolve hit_ids → hits by querying the speeches table (documents as fallback)
     if hit_ids and not hits:
-        # Normalize: strip "talks/"/"motions/" prefix if present
+        # Normalize: strip "speeches/"/"documents/" prefix if present
         bare_ids = [i.split("/", 1)[1] if "/" in i else i for i in hit_ids]
         try:
             talk_rows = pg.execute(
                 """
-                SELECT id, talare, parti, datum::text AS datum, intressent_id, summary
-                FROM talks
+                SELECT id, speaker_name, party, date::text AS date, person_id, summary
+                FROM speeches
                 WHERE id = ANY(%s::text[])
                 """,
                 (bare_ids,),
             )
             hits = [
                 {
-                    "_id": f"talks/{r['id']}",
-                    "speaker": r.get("talare"),
-                    "party": r.get("parti"),
-                    "date": r.get("datum"),
+                    "_id": f"speeches/{r['id']}",
+                    "speaker": r.get("speaker_name"),
+                    "party": r.get("party"),
+                    "date": r.get("date"),
                     "snippet": (r.get("summary") or "")[:300],
-                    "intressent_id": r.get("intressent_id"),
+                    "person_id": r.get("person_id"),
                 }
                 for r in talk_rows
             ]
@@ -1829,9 +1829,9 @@ def share_insight(
             if missing:
                 motion_rows = pg.execute(
                     """
-                    SELECT dok_id, titel, parties, author_names, datum::text AS datum, text
-                    FROM motions
-                    WHERE dok_id = ANY(%s::text[])
+                    SELECT doc_id, title, parties, author_names, date::text AS date, text
+                    FROM documents
+                    WHERE doc_id = ANY(%s::text[])
                     """,
                     (missing,),
                 )
@@ -1840,12 +1840,12 @@ def share_insight(
                     speaker = ", ".join(names[:3]) + (" m.fl." if len(names) > 3 else "")
                     hits.append(
                         {
-                            "_id": f"motions/{r['dok_id']}",
+                            "_id": f"documents/{r['doc_id']}",
                             "speaker": speaker,
                             "party": "/".join(r.get("parties") or []),
-                            "date": r.get("datum"),
-                            "snippet": (r.get("titel") or "") or (r.get("text") or "")[:300],
-                            "intressent_id": None,
+                            "date": r.get("date"),
+                            "snippet": (r.get("title") or "") or (r.get("text") or "")[:300],
+                            "person_id": None,
                         }
                     )
         except Exception as e:
@@ -1865,10 +1865,10 @@ def share_insight(
     if src_ids and not hits and not rows:
         try:
             src_rows = pg.execute(
-                "SELECT id, debateurl FROM talks WHERE id = ANY(%s::text[])",
+                "SELECT id, url_video FROM speeches WHERE id = ANY(%s::text[])",
                 (src_ids,),
             )
-            src_sources = {r["id"]: r["debateurl"] for r in src_rows if r.get("debateurl")}
+            src_sources = {r["id"]: r["url_video"] for r in src_rows if r.get("url_video")}
         except Exception as e:
             print_red(f"[share_insight] Failed to fetch src debateurls: {e}")
 
@@ -1920,15 +1920,15 @@ def lookup_source(source_ids: list[str]) -> str:
 
     Args:
         source_ids: Lista av bara tal-id:n (t.ex. ["H40911", "GH09100"]) eller
-            "talks/H40911"-format. ID:n som inte finns i registret utelämnas.
+            "speeches/H40911"-format. ID:n som inte finns i registret utelämnas.
 
     Returns:
-        Sträng med talare, parti, datum, rubrik och lagrad text per id.
+        Sträng med speaker_name, party, date, rubrik och lagrad text per id.
         Returnerar en kort meddelandetext om inga av id:na hittades.
     """
     registry = _provenance_registry.get()
     if registry is None:
-        return "ERROR: ingen provenance-registry är aktiv för denna session."
+        return "ERROR: ingen provenance-registry är active för denna session."
     if not source_ids:
         return "ERROR: source_ids är tom."
 

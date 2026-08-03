@@ -59,21 +59,21 @@ def html_to_text(html: str) -> str:
 
 
 def parse_file(path: str) -> dict | None:
-    """Parsar en motions-JSON till en dict med rader för motions + motion_authors."""
+    """Parsar en documents-JSON till en dict med rader för documents + document_authors."""
     with open(path, "r", encoding="utf-8-sig") as f:
         data = json.load(f)
     ds = data["dokumentstatus"]
     dok = ds["dokument"]
 
-    dok_id = _clean(dok.get("dok_id"))
-    if not dok_id:
+    doc_id = _clean(dok.get("doc_id"))
+    if not doc_id:
         return None
     if _clean(dok.get("doktyp")) not in (None, "mot"):
         return None  # defensivt; mot-arkiven ska bara innehålla motioner
 
-    rm = _clean(dok.get("rm")) or ""
+    session_label = _clean(dok.get("session_label")) or ""
     try:
-        year = int(rm[:4])
+        year = int(session_label[:4])
     except (ValueError, TypeError):
         year = None
 
@@ -87,82 +87,82 @@ def parse_file(path: str) -> dict | None:
     for i, x in enumerate(intressenter):
         if not isinstance(x, dict):
             continue
-        namn = clean_speaker_name(_clean(x.get("namn")) or "")
-        partibet = _clean(x.get("partibet"))
+        name = clean_speaker_name(_clean(x.get("name")) or "")
+        party = _clean(x.get("party"))
         authors.append(
-            (dok_id, i, _clean(x.get("intressent_id")), namn, partibet, _clean(x.get("roll")))
+            (doc_id, i, _clean(x.get("person_id")), name, party, _clean(x.get("role")))
         )
-        if namn:
-            author_names.append(namn)
-        if partibet and partibet not in parties:
-            parties.append(partibet)
+        if name:
+            author_names.append(name)
+        if party and party not in parties:
+            parties.append(party)
 
-    forslag = _as_list((ds.get("dokforslag") or {}).get("forslag"))
-    # Condensed, high-signal yrkanden: one row per <forslag> for FTS + embeddings.
+    proposals_raw = _as_list((ds.get("dokforslag") or {}).get("proposals_raw"))
+    # Condensed, high-signal yrkanden: one row per <proposals_raw> for FTS + embeddings.
     yrkanden = []
     lydelser = []
-    for i, f in enumerate(forslag):
+    for i, f in enumerate(proposals_raw):
         if not isinstance(f, dict):
             continue
-        lydelse = _clean(f.get("lydelse"))
-        if not lydelse:
+        text = _clean(f.get("text"))
+        if not text:
             continue
-        lydelser.append(lydelse)
+        lydelser.append(text)
         yrkanden.append((
-            f"{dok_id}:{i}", dok_id, i, _clean(f.get("nummer")), lydelse,
-            _clean(f.get("utskottet")), _clean(f.get("kammaren")), _clean(f.get("behandlas_i")),
+            f"{doc_id}:{i}", doc_id, i, _clean(f.get("number")), text,
+            _clean(f.get("committee_recommendation")), _clean(f.get("chamber_decision")), _clean(f.get("handled_in")),
         ))
-    forslag_text = " ".join(lydelser) or None
+    proposals_text = " ".join(lydelser) or None
 
-    bilagor = _as_list((ds.get("dokbilaga") or {}).get("bilaga"))
-    pdf_url = None
-    for b in bilagor:
+    attachments = _as_list((ds.get("dokbilaga") or {}).get("bilaga"))
+    url_pdf = None
+    for b in attachments:
         if isinstance(b, dict) and (b.get("filtyp") or "").lower() == "pdf":
-            pdf_url = _clean(b.get("fil_url"))
+            url_pdf = _clean(b.get("fil_url"))
             break
 
     return {
-        "dok_id": dok_id,
-        "hangar_id": _clean(dok.get("hangar_id")),
-        "rm": rm or None,
-        "beteckning": _clean(dok.get("beteckning")),
-        "subtyp": _clean(dok.get("subtyp")),
-        "organ": _clean(dok.get("organ")),
+        "doc_id": doc_id,
+        "source_record_id": _clean(dok.get("source_record_id")),
+        "session_label": session_label or None,
+        "designation": _clean(dok.get("designation")),
+        "subtype": _clean(dok.get("subtype")),
+        "committee": _clean(dok.get("committee")),
         "status": _clean(dok.get("status")),
-        "datum": _parse_date(_clean(dok.get("datum")) or ""),
-        "systemdatum": _clean(dok.get("systemdatum")),
-        "publicerad": _clean(dok.get("publicerad")),
+        "date": _parse_date(_clean(dok.get("date")) or ""),
+        "source_updated_at": _clean(dok.get("source_updated_at")),
+        "published_at": _clean(dok.get("published_at")),
         "year": year,
-        "titel": _clean(dok.get("titel")),
-        "undertitel": _clean(dok.get("subtitel")) or _clean(dok.get("undertitel")),
+        "title": _clean(dok.get("title")),
+        "subtitle": _clean(dok.get("subtitel")) or _clean(dok.get("subtitle")),
         "text": text,
-        "forslag_text": forslag_text,
+        "proposals_text": proposals_text,
         "has_text": has_text,
-        "dokument_url_text": _clean(dok.get("dokument_url_text")),
-        "dokument_url_html": _clean(dok.get("dokument_url_html")),
-        "pdf_url": pdf_url,
+        "url_text": _clean(dok.get("url_text")),
+        "url_html": _clean(dok.get("url_html")),
+        "url_pdf": url_pdf,
         "parties": parties,
         "author_names": author_names,
-        "forslag": json.dumps(forslag, ensure_ascii=False) if forslag else None,
-        "bilagor": json.dumps(bilagor, ensure_ascii=False) if bilagor else None,
-        "num_yrkanden": len(forslag),
+        "proposals_raw": json.dumps(proposals_raw, ensure_ascii=False) if proposals_raw else None,
+        "attachments": json.dumps(attachments, ensure_ascii=False) if attachments else None,
+        "num_proposals": len(proposals_raw),
         "authors": authors,
         "yrkanden": yrkanden,
     }
 
 
 def process_folder(folder_path: str, already_processed: set[str] = frozenset()) -> list[dict]:
-    """Parsar JSON-filer i folder_path, returnerar motions-dicts (hoppar över kända ID:n)."""
+    """Parsar JSON-filer i folder_path, returnerar documents-dicts (hoppar över kända ID:n)."""
     docs = []
     for file in os.listdir(folder_path):
         if not file.endswith(".json"):
             continue
-        # Filnamnet är dok_id (gemener) — hoppa över kända utan att parsa
+        # Filnamnet är doc_id (gemener) — hoppa över kända utan att parsa
         if file[:-5].upper() in already_processed:
             continue
         try:
             doc = parse_file(os.path.join(folder_path, file))
-            if doc is None or doc["dok_id"] in already_processed:
+            if doc is None or doc["doc_id"] in already_processed:
                 continue
             docs.append(doc)
         except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
@@ -171,26 +171,26 @@ def process_folder(folder_path: str, already_processed: set[str] = frozenset()) 
 
 
 _UPSERT_SQL = """
-INSERT INTO motions (
-    dok_id, hangar_id, rm, beteckning, subtyp, organ, status,
-    datum, systemdatum, publicerad, year,
-    titel, undertitel, text, forslag_text, has_text,
-    dokument_url_text, dokument_url_html, pdf_url,
-    parties, author_names, forslag, bilagor, num_yrkanden
+INSERT INTO documents (
+    doc_id, source_record_id, session_label, designation, subtype, committee, status,
+    date, source_updated_at, published_at, session_year,
+    title, subtitle, text, proposals_text, has_text,
+    url_text, url_html, url_pdf,
+    parties, author_names, proposals_raw, attachments, num_proposals
 ) VALUES %s
-ON CONFLICT (dok_id) DO NOTHING
+ON CONFLICT (doc_id) DO NOTHING
 """
-# Framtida förbättring: DO UPDATE ... WHERE EXCLUDED.systemdatum > motions.systemdatum
+# Framtida förbättring: DO UPDATE ... WHERE EXCLUDED.source_updated_at > documents.source_updated_at
 # för att plocka upp utskottsutfall på redan inlästa motioner.
 
 _AUTHORS_SQL = """
-INSERT INTO motion_authors (dok_id, ordinal, intressent_id, namn, partibet, roll)
+INSERT INTO document_authors (doc_id, ordinal, person_id, name, party, role)
 VALUES %s
-ON CONFLICT (dok_id, ordinal) DO NOTHING
+ON CONFLICT (doc_id, ordinal) DO NOTHING
 """
 
 _YRKANDEN_SQL = """
-INSERT INTO motion_yrkanden (id, dok_id, ordinal, nummer, lydelse, utskottet, kammaren, behandlas_i)
+INSERT INTO document_proposals (id, doc_id, ordinal, number, text, committee_recommendation, chamber_decision, handled_in)
 VALUES %s
 ON CONFLICT (id) DO NOTHING
 """
@@ -198,30 +198,30 @@ ON CONFLICT (id) DO NOTHING
 
 def _doc_to_row(doc: dict) -> tuple:
     return (
-        doc["dok_id"],
-        doc["hangar_id"],
-        doc["rm"],
-        doc["beteckning"],
-        doc["subtyp"],
-        doc["organ"],
+        doc["doc_id"],
+        doc["source_record_id"],
+        doc["session_label"],
+        doc["designation"],
+        doc["subtype"],
+        doc["committee"],
         doc["status"],
-        doc["datum"],
-        doc["systemdatum"],
-        doc["publicerad"],
+        doc["date"],
+        doc["source_updated_at"],
+        doc["published_at"],
         doc["year"],
-        doc["titel"],
-        doc["undertitel"],
+        doc["title"],
+        doc["subtitle"],
         doc["text"],
-        doc["forslag_text"],
+        doc["proposals_text"],
         doc["has_text"],
-        doc["dokument_url_text"],
-        doc["dokument_url_html"],
-        doc["pdf_url"],
+        doc["url_text"],
+        doc["url_html"],
+        doc["url_pdf"],
         doc["parties"],
         doc["author_names"],
-        doc["forslag"],
-        doc["bilagor"],
-        doc["num_yrkanden"],
+        doc["proposals_raw"],
+        doc["attachments"],
+        doc["num_proposals"],
     )
 
 
@@ -244,8 +244,8 @@ def update_folder(path: str, already_processed: set[str] = None) -> int:
     Returnerar antalet nya motioner.
     """
     if already_processed is None:
-        rows = pg.execute("SELECT dok_id FROM motions")
-        already_processed = {row["dok_id"] for row in rows}
+        rows = pg.execute("SELECT doc_id FROM documents")
+        already_processed = {row["doc_id"] for row in rows}
 
     docs = process_folder(path, already_processed)
     insert_docs(docs)
@@ -253,7 +253,7 @@ def update_folder(path: str, already_processed: set[str] = None) -> int:
 
 
 if __name__ == "__main__":
-    existing = {row["dok_id"] for row in pg.execute("SELECT dok_id FROM motions")}
+    existing = {row["doc_id"] for row in pg.execute("SELECT doc_id FROM documents")}
     total = 0
     for folder in sorted(os.listdir("motioner")):
         path = str(bootstrap.DATA_DIR / 'motioner' / folder)
@@ -262,7 +262,7 @@ if __name__ == "__main__":
         print(f"Processing {folder} …", end=" ", flush=True)
         docs = process_folder(path, already_processed=existing)
         insert_docs(docs)
-        existing |= {d["dok_id"] for d in docs}
+        existing |= {d["doc_id"] for d in docs}
         total += len(docs)
         print(f"{len(docs)} inserted")
-    print(f"\nTotal: {total} new motions inserted")
+    print(f"\nTotal: {total} new documents inserted")

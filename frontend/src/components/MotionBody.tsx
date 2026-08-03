@@ -21,7 +21,7 @@ function previewText(text: string): string {
  * Shared rendering of a motion's contents (authors, metadata, yrkanden, text).
  * Used by both MotionView (standalone page) and the TalkDrawer motion branch,
  * so the two stay in sync. Reuses talk-view__* classes for visual parity with
- * anföranden, adding a few motion-view__* rules for the parts talks don't have.
+ * anföranden, adding a few motion-view__* rules for the parts speeches don't have.
  */
 export function MotionBody({ motion }: { motion: Motion }) {
 	const [expanded, setExpanded] = useState(false);
@@ -29,8 +29,8 @@ export function MotionBody({ motion }: { motion: Motion }) {
 	const primary = authors[0];
 	const coSigners = authors.slice(1);
 	const primaryPhoto =
-		primary?.bild_url_192?.replace("http://", "https://") ||
-		(primary?.intressent_id ? getMpPhotoUrl(primary.intressent_id) : undefined);
+		primary?.image_url_medium?.replace("http://", "https://") ||
+		(primary?.person_id ? getMpPhotoUrl(primary.person_id) : undefined);
 
 	return (
 		<div className="talk-view motion-view">
@@ -39,52 +39,52 @@ export function MotionBody({ motion }: { motion: Motion }) {
 				{primaryPhoto && (
 					<img
 						src={primaryPhoto}
-						alt={primary?.namn ?? ""}
+						alt={primary?.name ?? ""}
 						className="talk-view__speaker-photo talk-view__speaker-photo--enhanced"
 						onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
 					/>
 				)}
 				<div className="talk-view__speaker-info">
 					<div className="talk-view__speaker-row">
-						{primary?.intressent_id ? (
-							<Link to={`/mp/${primary.intressent_id}`} className="talk-view__speaker-name-link">
-								<h1>{primary?.namn}</h1>
+						{primary?.person_id ? (
+							<Link to={`/mp/${primary.person_id}`} className="talk-view__speaker-name-link">
+								<h1>{primary?.name}</h1>
 							</Link>
 						) : (
-							<h1>{primary?.namn ?? motion.talare}</h1>
+							<h1>{primary?.name ?? motion.speaker_name}</h1>
 						)}
-						{primary?.partibet && (
-							<span className="party-chip" data-party={primary.partibet} style={{ "--party-color": `var(--party-${primary.partibet ?? ""})` } as React.CSSProperties}>{primary.partibet}</span>
+						{primary?.party && (
+							<span className="party-chip" data-party={primary.party} style={{ "--party-color": `var(--party-${primary.party ?? ""})` } as React.CSSProperties}>{primary.party}</span>
 						)}
 					</div>
 					<div className="talk-view__speaker-meta">
-						{primary?.valkrets && <span className="talk-view__speaker-detail">{primary.valkrets}</span>}
+						{primary?.constituency && <span className="talk-view__speaker-detail">{primary.constituency}</span>}
 						{primary?.status && <span className="talk-view__speaker-detail">{primary.status}</span>}
 					</div>
-					{primary?.intressent_id && (
+					{primary?.person_id && (
 						<Link
-							to={`/mp/${primary.intressent_id}?motion_id=${motion.dok_id}`}
+							to={`/mp/${primary.person_id}?doc_id=${motion.doc_id}`}
 							className="secondary-button talk-view__chat-btn"
 						>
-							Chatta med {primary?.tilltalsnamn || primary?.namn}
+							Chatta med {primary?.first_name || primary?.name}
 						</Link>
 					)}
 				</div>
 			</div>
 
-			<h2 className="motion-view__title">{motion.titel}</h2>
+			<h2 className="motion-view__title">{motion.title}</h2>
 
 			{coSigners.length > 0 && (
 				<div className="motion-view__cosigners">
 					<span className="motion-view__cosigners-label">Medundertecknare:</span>{" "}
 					{coSigners.map((a, i) => (
 						<span key={i} className="motion-view__cosigner">
-							{a.intressent_id ? (
-								<Link to={`/mp/${a.intressent_id}`}>{a.namn}</Link>
+							{a.person_id ? (
+								<Link to={`/mp/${a.person_id}`}>{a.name}</Link>
 							) : (
-								a.namn
+								a.name
 							)}
-							{a.partibet ? ` (${a.partibet})` : ""}
+							{a.party ? ` (${a.party})` : ""}
 							{i < coSigners.length - 1 ? ", " : ""}
 						</span>
 					))}
@@ -93,13 +93,13 @@ export function MotionBody({ motion }: { motion: Motion }) {
 
 			<dl className="talk-view__meta-grid">
 				<dt>Datum</dt>
-				<dd>{motion.datum}</dd>
+				<dd>{motion.date}</dd>
 
 				<dt>Riksmöte</dt>
-				<dd>{motion.rm}{motion.beteckning ? `:${motion.beteckning}` : ""}</dd>
+				<dd>{motion.session_label}{motion.designation ? `:${motion.designation}` : ""}</dd>
 
-				{motion.subtyp && (<><dt>Typ</dt><dd>{motion.subtyp}</dd></>)}
-				{motion.organ && (<><dt>Utskott</dt><dd>{motion.organ}</dd></>)}
+				{motion.subtype && (<><dt>Typ</dt><dd>{motion.subtype}</dd></>)}
+				{motion.committee && (<><dt>Utskott</dt><dd>{motion.committee}</dd></>)}
 				{motion.status && (<><dt>Status</dt><dd>{motion.status}</dd></>)}
 			</dl>
 
@@ -118,10 +118,10 @@ export function MotionBody({ motion }: { motion: Motion }) {
 						<tbody>
 							{motion.yrkanden.map((y, i) => (
 								<tr key={i}>
-									<td>{y.nummer}</td>
-									<td>{y.lydelse}</td>
-									<td>{y.utskottet ?? "—"}</td>
-									<td>{y.kammaren ?? "—"}</td>
+									<td>{y.number}</td>
+									<td>{y.text}</td>
+									<td>{y.committee_recommendation ?? "—"}</td>
+									<td>{y.chamber_decision ?? "—"}</td>
 								</tr>
 							))}
 						</tbody>
@@ -129,9 +129,9 @@ export function MotionBody({ motion }: { motion: Motion }) {
 				</div>
 			)}
 
-			{motion.anforandetext ? (
+			{motion.text ? (
 				(() => {
-					const text = motion.anforandetext;
+					const text = motion.text;
 					const isLong = text.length > PREVIEW_CHARS;
 					const showFull = expanded || !isLong;
 					return (
@@ -157,15 +157,15 @@ export function MotionBody({ motion }: { motion: Motion }) {
 				</p>
 			)}
 
-			{(motion.dokument_url_html || motion.pdf_url) && (
+			{(motion.url_html || motion.url_pdf) && (
 				<div className="talk-view__link-group">
-					{motion.dokument_url_html && (
-						<a href={motion.dokument_url_html} target="_blank" rel="noreferrer" className="primary">
+					{motion.url_html && (
+						<a href={motion.url_html} target="_blank" rel="noreferrer" className="primary">
 							Öppna på riksdagen.se →
 						</a>
 					)}
-					{motion.pdf_url && (
-						<a href={motion.pdf_url} target="_blank" rel="noreferrer" className="primary">
+					{motion.url_pdf && (
+						<a href={motion.url_pdf} target="_blank" rel="noreferrer" className="primary">
 							PDF →
 						</a>
 					)}

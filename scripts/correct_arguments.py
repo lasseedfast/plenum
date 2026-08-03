@@ -1,7 +1,7 @@
 """
 Language correction pipeline for riksdag talk arguments.
 
-Reads talks from 2002 onwards that have arguments (extracted by a small 9b model
+Reads speeches from 2002 onwards that have arguments (extracted by a small 9b model
 with sometimes poor Swedish), sends them to the big-smart LLM for language
 correction, and writes corrected arguments back.
 
@@ -102,12 +102,12 @@ def _turn1_user(arguments: list[str]) -> str:
 
 
 def _turn2_user(unclear_keyed: dict[str, str], talk: dict) -> str:
-    talare = (talk.get("talare") or "Okänd").strip()
-    parti = (talk.get("parti") or "").strip()
-    text = talk.get("anforandetext", "")
+    speaker_name = (talk.get("speaker_name") or "Okänd").strip()
+    party = (talk.get("party") or "").strip()
+    text = talk.get("text", "")
     return (
         f"Dessa argument var obegripliga. Här är det fullständiga anförandet som referens:\n\n"
-        f"Talare: {talare} ({parti})\n\n"
+        f"Talare: {speaker_name} ({party})\n\n"
         f"Anförande:\n{text}\n\n"
         "---\n"
         "Rätta nu språket i dessa argument med hjälp av anförandet. "
@@ -241,13 +241,13 @@ def process_talk(talk: dict) -> tuple[bool, bool]:
 
         if corrected is None:
             pg.execute_void(
-                "UPDATE talks SET arguments_corrected = TRUE WHERE id = %s",
+                "UPDATE speeches SET arguments_corrected = TRUE WHERE id = %s",
                 (talk["id"],),
             )
             return True, False
 
         pg.execute_void(
-            "UPDATE talks SET arguments = %s, arguments_corrected = TRUE WHERE id = %s",
+            "UPDATE speeches SET arguments = %s, arguments_corrected = TRUE WHERE id = %s",
             (corrected, talk["id"]),
         )
         return True, used_full_text
@@ -267,13 +267,13 @@ BATCH_SIZE = 100
 def fetch_batch() -> list[dict]:
     return pg.execute(
         """
-        SELECT id, anforandetext, talare, parti, arguments
-        FROM talks
+        SELECT id, text, speaker_name, party, arguments
+        FROM speeches
         WHERE array_length(arguments, 1) > 0
-          AND datum >= '2002-01-01'
+          AND date >= '2002-01-01'
           AND arguments_corrected IS NOT TRUE
-          AND anforandetext IS NOT NULL
-        ORDER BY datum DESC NULLS LAST
+          AND text IS NOT NULL
+        ORDER BY date DESC NULLS LAST
         LIMIT %s
         """,
         (BATCH_SIZE,),
@@ -283,7 +283,7 @@ def fetch_batch() -> list[dict]:
 def ensure_schema():
     try:
         pg.execute_void(
-            "ALTER TABLE talks ADD COLUMN IF NOT EXISTS arguments_corrected BOOLEAN DEFAULT FALSE"
+            "ALTER TABLE speeches ADD COLUMN IF NOT EXISTS arguments_corrected BOOLEAN DEFAULT FALSE"
         )
     except Exception as e:
         logger.warning(f"Could not apply schema change: {e}")
@@ -303,17 +303,17 @@ def backup_arguments():
     rows = pg.execute(
         """
         SELECT id, arguments
-        FROM talks
+        FROM speeches
         WHERE array_length(arguments, 1) > 0
-          AND datum >= '2002-01-01'
-          AND anforandetext IS NOT NULL
+          AND date >= '2002-01-01'
+          AND text IS NOT NULL
         ORDER BY id
         """
     )
     backup = {str(row["id"]): row["arguments"] for row in rows}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(backup, f, ensure_ascii=False, indent=2)
-    logger.info(f"Backed up {len(backup)} talks → {path}")
+    logger.info(f"Backed up {len(backup)} speeches → {path}")
 
 
 def main():
@@ -330,7 +330,7 @@ def main():
     while True:
         batch = fetch_batch()
         if not batch:
-            logger.info("No more talks to correct. All done.")
+            logger.info("No more speeches to correct. All done.")
             break
 
         with ThreadPoolExecutor(max_workers=WORKERS) as executor:

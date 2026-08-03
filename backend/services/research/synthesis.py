@@ -2,7 +2,7 @@
 the single board report. Both are plain-text markdown generations (no format=,
 so long quote-rich prose isn't squeezed through JSON escaping).
 
-Citation contract with the frontend: ``[källa:<talk_id>]`` — the same bare ids
+Citation contract with the frontend: ``[källa:<speech_id>]`` — the same bare ids
 that power the finding source chips. A deterministic backstop (same philosophy
 as trip._ground) strips any marker whose id was not among the thread's grounded
 findings, so the model can never cite something it wasn't given.

@@ -31,12 +31,12 @@ export function ForkRedirectView() {
 					llm_messages: snap.llm_messages ?? [],
 					turns: (snap.turns ?? []) as unknown as ChatTurn[],
 					focus_ids: snap.focus_ids ?? [],
-					intressent_id: snap.intressent_id ?? null,
-					initial_talk_id: snap.initial_talk_id ?? null,
+					person_id: snap.person_id ?? null,
+					initial_speech_id: snap.initial_speech_id ?? null,
 				};
 				const titlePayload: EncTitlePayload = {
 					title: (snap.turns?.[0]?.question ?? "Delad konversation").slice(0, 80),
-					intressent_id: snap.intressent_id ?? null,
+					person_id: snap.person_id ?? null,
 				};
 				const [enc_payload, enc_title] = await Promise.all([
 					encryptJson(dek, payload),
@@ -44,8 +44,8 @@ export function ForkRedirectView() {
 				]);
 				await upsertSession(sessionId, { session_type: snap.session_type, enc_payload, enc_title });
 				const path =
-					snap.session_type === "mp" && snap.intressent_id
-						? `/mp/${snap.intressent_id}?session=${sessionId}`
+					snap.session_type === "mp" && snap.person_id
+						? `/mp/${snap.person_id}?session=${sessionId}`
 						: `/chat/${sessionId}`;
 				localStorage.setItem(storageKey, path);
 				navigate(path, { replace: true });

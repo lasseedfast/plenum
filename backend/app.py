@@ -77,13 +77,13 @@ def _verify_database_matches_config() -> None:
         rows = pg.execute(
             "SELECT a.atttypmod AS typmod FROM pg_attribute a "
             "JOIN pg_class c ON c.oid = a.attrelid "
-            "WHERE c.relname = 'chunks' AND a.attname = 'embedding'"
+            "WHERE c.relname = 'speech_chunks' AND a.attname = 'embedding'"
         )
         if rows and rows[0]["typmod"] and rows[0]["typmod"] > 0:
             actual_dim = rows[0]["typmod"]
             if actual_dim != PARLIAMENT.embeddings.dimension:
                 raise RuntimeError(
-                    f"chunks.embedding is vector({actual_dim}) but parliament.yaml "
+                    f"speech_chunks.embedding is vector({actual_dim}) but parliament.yaml "
                     f"declares embeddings.dimension={PARLIAMENT.embeddings.dimension}. "
                     f"Re-embedding is required to change this."
                 )
@@ -186,197 +186,197 @@ def chat(payload: ChatRequest) -> ChatResponse:
     return ChatResponse(answer=chat_result["answer"], sources=chat_result["sources"])
 
 
-@app.get("/api/talk/{talk_id}")
-def get_talk(talk_id: str) -> dict:
+@app.get("/api/talk/{speech_id}")
+def get_talk(speech_id: str) -> dict:
     """
     Fetch a single talk document by its ID.
 
     Accepts either:
-    - A full id like "talks/H40911"
+    - A full id like "speeches/H40911"
     - Just the key like "H40911"
 
     Returns the talk with person info merged in, plus previous/next navigation.
     """
-    bare_id = talk_id.split("/", 1)[-1]  # strip "talks/" prefix if present
+    bare_id = speech_id.split("/", 1)[-1]  # strip "speeches/" prefix if present
 
     rows = pg.execute(
         """
         SELECT
-            t.id, t.anforandetext, t.talare, t.parti,
-            t.datum::text AS datum, t.kammaraktivitet, t.avsnittsrubrik,
-            t.titel, t.anforande_nummer, t.replik,
-            COALESCE(t.url_session, t.debateurl) AS url_session,
-            t.url_audio, t.summary, t.intressent_id,
-            p.bild_url_192, p.tilltalsnamn, p.efternamn, p.valkrets, p.status AS person_status
-        FROM talks t
-        LEFT JOIN people p ON t.intressent_id = p.intressent_id
+            t.id, t.text, t.speaker_name, t.party,
+            t.date::text AS date, t.activity_type, t.section_title,
+            t.title, t.sequence, t.is_reply,
+            COALESCE(t.url_session, t.url_video) AS url_session,
+            t.url_audio, t.summary, t.person_id,
+            p.image_url_medium, p.first_name, p.last_name, p.constituency, p.status AS person_status
+        FROM speeches t
+        LEFT JOIN people p ON t.person_id = p.person_id
         WHERE t.id = %s
         """,
         (bare_id,),
     )
 
     if not rows:
-        raise HTTPException(status_code=404, detail=f"Talk not found: {talk_id}")
+        raise HTTPException(status_code=404, detail=f"Talk not found: {speech_id}")
 
     row = rows[0]
-    num = row.get("anforande_nummer")
+    num = row.get("sequence")
 
     # Previous / next navigation within the same date + debate type
     prev_rows, next_rows = [], []
     if num is not None:
         prev_rows = pg.execute(
             """
-            SELECT id FROM talks
-            WHERE datum = %s::date AND kammaraktivitet = %s AND anforande_nummer = %s
+            SELECT id FROM speeches
+            WHERE date = %s::date AND activity_type = %s AND sequence = %s
             LIMIT 1
             """,
-            (row["datum"], row["kammaraktivitet"], num - 1),
+            (row["date"], row["activity_type"], num - 1),
         )
         next_rows = pg.execute(
             """
-            SELECT id FROM talks
-            WHERE datum = %s::date AND kammaraktivitet = %s AND anforande_nummer = %s
+            SELECT id FROM speeches
+            WHERE date = %s::date AND activity_type = %s AND sequence = %s
             LIMIT 1
             """,
-            (row["datum"], row["kammaraktivitet"], num + 1),
+            (row["date"], row["activity_type"], num + 1),
         )
 
     person = None
-    if row.get("tilltalsnamn") or row.get("efternamn"):
+    if row.get("first_name") or row.get("last_name"):
         person = {
-            "bild_url_192": row.get("bild_url_192"),
-            "tilltalsnamn": row.get("tilltalsnamn"),
-            "efternamn": row.get("efternamn"),
-            "valkrets": row.get("valkrets"),
+            "image_url_medium": row.get("image_url_medium"),
+            "first_name": row.get("first_name"),
+            "last_name": row.get("last_name"),
+            "constituency": row.get("constituency"),
             "status": row.get("person_status"),
         }
 
     return {
-        "anforandetext": row.get("anforandetext"),
-        "talare": row.get("talare"),
-        "parti": row.get("parti"),
-        "datum": row.get("datum"),
-        "kammaraktivitet": row.get("kammaraktivitet"),
-        "avsnittsrubrik": row.get("avsnittsrubrik"),
-        "titel": row.get("titel"),
-        "anforande_nummer": num,
-        "replik": row.get("replik"),
+        "text": row.get("text"),
+        "speaker_name": row.get("speaker_name"),
+        "party": row.get("party"),
+        "date": row.get("date"),
+        "activity_type": row.get("activity_type"),
+        "section_title": row.get("section_title"),
+        "title": row.get("title"),
+        "sequence": num,
+        "is_reply": row.get("is_reply"),
         "url_session": row.get("url_session"),
         "url_audio": row.get("url_audio"),
         "summary": row.get("summary"),
         "person": person,
         "navigation": {
-            "previous": f"talks/{prev_rows[0]['id']}" if prev_rows else None,
-            "next": f"talks/{next_rows[0]['id']}" if next_rows else None,
+            "previous": f"speeches/{prev_rows[0]['id']}" if prev_rows else None,
+            "next": f"speeches/{next_rows[0]['id']}" if next_rows else None,
         },
     }
 
 
 # Fields surfaced per yrkande from the raw dokforslag JSON.
-_MOTION_YRKANDE_KEYS = ("nummer", "lydelse", "utskottet", "kammaren", "behandlas_i")
+_MOTION_YRKANDE_KEYS = ("number", "text", "committee_recommendation", "chamber_decision", "handled_in")
 
 
-@app.get("/api/motion/{dok_id}")
-def get_motion(dok_id: str) -> dict:
+@app.get("/api/motion/{doc_id}")
+def get_motion(doc_id: str) -> dict:
     """
-    Fetch a single motion document by its dok_id.
+    Fetch a single motion document by its doc_id.
 
-    Accepts either a full id like "motions/HD02846" or just the key "HD02846".
-    Returns a shape parallel to /api/talk (talare/parti/datum/titel/anforandetext
+    Accepts either a full id like "documents/HD02846" or just the key "HD02846".
+    Returns a shape parallel to /api/talk (speaker_name/party/date/title/text
     populated for shared rendering) plus motion-specific fields: authors,
     yrkanden with committee/chamber outcomes, pdf/document links.
     """
-    bare_id = dok_id.split("/", 1)[-1]  # strip "motions/" prefix if present
+    bare_id = doc_id.split("/", 1)[-1]  # strip "documents/" prefix if present
 
     rows = pg.execute(
         """
-        SELECT dok_id, rm, beteckning, subtyp, organ, status,
-               datum::text AS datum, titel, undertitel, text, has_text,
-               parties, author_names, forslag, pdf_url, dokument_url_html
-        FROM motions
-        WHERE dok_id = %s
+        SELECT doc_id, session_label, designation, subtype, committee, status,
+               date::text AS date, title, subtitle, text, has_text,
+               parties, author_names, proposals_raw, url_pdf, url_html
+        FROM documents
+        WHERE doc_id = %s
         """,
         (bare_id,),
     )
     if not rows:
-        raise HTTPException(status_code=404, detail=f"Motion not found: {dok_id}")
+        raise HTTPException(status_code=404, detail=f"Motion not found: {doc_id}")
     row = rows[0]
 
     # Authors joined with people for portraits / MP-page links.
     author_rows = pg.execute(
         """
-        SELECT a.ordinal, a.namn, a.partibet, a.roll, a.intressent_id,
-               p.bild_url_192, p.tilltalsnamn, p.efternamn, p.valkrets,
+        SELECT a.ordinal, a.name, a.party, a.role, a.person_id,
+               p.image_url_medium, p.first_name, p.last_name, p.constituency,
                p.status AS person_status
-        FROM motion_authors a
-        LEFT JOIN people p ON a.intressent_id = p.intressent_id
-        WHERE a.dok_id = %s
+        FROM document_authors a
+        LEFT JOIN people p ON a.person_id = p.person_id
+        WHERE a.doc_id = %s
         ORDER BY a.ordinal
         """,
         (bare_id,),
     )
     authors = [
         {
-            "namn": a.get("namn"),
-            "partibet": a.get("partibet"),
-            "roll": a.get("roll"),
-            "intressent_id": a.get("intressent_id"),
-            "tilltalsnamn": a.get("tilltalsnamn"),
-            "bild_url_192": (a.get("bild_url_192") or "").replace("http://", "https://") or None,
-            "valkrets": a.get("valkrets"),
+            "name": a.get("name"),
+            "party": a.get("party"),
+            "role": a.get("role"),
+            "person_id": a.get("person_id"),
+            "first_name": a.get("first_name"),
+            "image_url_medium": (a.get("image_url_medium") or "").replace("http://", "https://") or None,
+            "constituency": a.get("constituency"),
             "status": a.get("person_status"),
         }
         for a in author_rows
     ]
 
-    # Primary author becomes the "person" card, mirroring talks' speaker.
+    # Primary author becomes the "person" card, mirroring speeches' speaker.
     person = None
-    if authors and (authors[0].get("intressent_id") or authors[0].get("bild_url_192")):
+    if authors and (authors[0].get("person_id") or authors[0].get("image_url_medium")):
         first = authors[0]
         person = {
-            "bild_url_192": first.get("bild_url_192"),
-            "tilltalsnamn": first.get("tilltalsnamn"),
-            "intressent_id": first.get("intressent_id"),
-            "valkrets": first.get("valkrets"),
+            "image_url_medium": first.get("image_url_medium"),
+            "first_name": first.get("first_name"),
+            "person_id": first.get("person_id"),
+            "constituency": first.get("constituency"),
             "status": first.get("status"),
         }
 
-    forslag = row.get("forslag") or []
-    if isinstance(forslag, str):
+    proposals_raw = row.get("proposals_raw") or []
+    if isinstance(proposals_raw, str):
         import json as _json
-        forslag = _json.loads(forslag)
+        proposals_raw = _json.loads(proposals_raw)
     yrkanden = [
         {k: f.get(k) for k in _MOTION_YRKANDE_KEYS if f.get(k) is not None}
-        for f in forslag
+        for f in proposals_raw
         if isinstance(f, dict)
     ]
 
     author_names = row.get("author_names") or []
-    talare = ", ".join(author_names[:3]) + (" m.fl." if len(author_names) > 3 else "")
+    speaker_name = ", ".join(author_names[:3]) + (" m.fl." if len(author_names) > 3 else "")
 
     return {
         "kind": "motion",
-        "dok_id": row.get("dok_id"),
+        "doc_id": row.get("doc_id"),
         # Shared-shape fields so talk-oriented UI code renders without changes:
-        "talare": talare,
-        "parti": "/".join(row.get("parties") or []),
-        "datum": row.get("datum"),
-        "titel": row.get("titel"),
-        "anforandetext": row.get("text"),
+        "speaker_name": speaker_name,
+        "party": "/".join(row.get("parties") or []),
+        "date": row.get("date"),
+        "title": row.get("title"),
+        "text": row.get("text"),
         "summary": None,
         "person": person,
         # Motion-specific:
-        "undertitel": row.get("undertitel"),
-        "rm": row.get("rm"),
-        "beteckning": row.get("beteckning"),
-        "subtyp": row.get("subtyp"),
-        "organ": row.get("organ"),
+        "subtitle": row.get("subtitle"),
+        "session_label": row.get("session_label"),
+        "designation": row.get("designation"),
+        "subtype": row.get("subtype"),
+        "committee": row.get("committee"),
         "status": row.get("status"),
         "has_text": row.get("has_text"),
         "parties": row.get("parties") or [],
         "authors": authors,
         "yrkanden": yrkanden,
-        "pdf_url": row.get("pdf_url"),
-        "dokument_url_html": row.get("dokument_url_html"),
+        "url_pdf": row.get("url_pdf"),
+        "url_html": row.get("url_html"),
         "navigation": {"previous": None, "next": None},
     }

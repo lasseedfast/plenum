@@ -16,7 +16,7 @@ class TextChunker:
 
         Args:
             chunk_limit: Target maximum characters per chunk (may be exceeded to preserve sentences)
-            chunk_overlap: Number of characters to overlap between chunks
+            chunk_overlap: Number of characters to overlap between speech_chunks
         """
         self.chunk_limit = chunk_limit
         self.chunk_overlap = chunk_overlap
@@ -180,9 +180,9 @@ class TextChunker:
     def _split_by_sentences(self, text: str) -> List[str]:
         """
         Split text into complete sentences, ensuring no mid-sentence breaks.
-        Returns chunks that respect sentence boundaries and tries to balance chunk sizes.
+        Returns speech_chunks that respect sentence boundaries and tries to balance chunk sizes.
         """
-        # Match sentence boundaries: period, exclamation, or question mark followed by space/newline
+        # Match sentence boundaries: year, exclamation, or question mark followed by space/newline
         sentence_pattern = r"(?<=[.!?])\s+"
         sentences = re.split(sentence_pattern, text)
 
@@ -202,8 +202,8 @@ class TextChunker:
         if total_length <= self.chunk_limit:
             return [" ".join(sentences)]
 
-        # Build chunks greedily first
-        chunks = []
+        # Build speech_chunks greedily first
+        speech_chunks = []
         current_chunk = ""
 
         for sentence in sentences:
@@ -212,7 +212,7 @@ class TextChunker:
                 current_chunk
                 and len(current_chunk) + len(sentence) + 1 > self.chunk_limit
             ):
-                chunks.append(current_chunk)
+                speech_chunks.append(current_chunk)
                 current_chunk = sentence
             else:
                 # Add sentence to current chunk
@@ -223,34 +223,34 @@ class TextChunker:
 
         # Add final chunk
         if current_chunk:
-            chunks.append(current_chunk)
+            speech_chunks.append(current_chunk)
 
-        # Now balance the chunks: if the last chunk is too small, redistribute
-        if len(chunks) >= 2:
-            last_chunk_size = len(chunks[-1])
+        # Now balance the speech_chunks: if the last chunk is too small, redistribute
+        if len(speech_chunks) >= 2:
+            last_chunk_size = len(speech_chunks[-1])
             # If last chunk is less than 40% of chunk_limit, try to rebalance
             if last_chunk_size < self.chunk_limit * 0.5:
                 # Rebuild from sentences, distributing more evenly
-                chunks = self._balance_sentence_chunks(sentences)
+                speech_chunks = self._balance_sentence_chunks(sentences)
 
-        return chunks if chunks else [text]
+        return speech_chunks if speech_chunks else [text]
 
     def _balance_sentence_chunks(self, sentences: List[str]) -> List[str]:
         """
-        Distribute sentences across chunks to minimize size variance.
-        Uses a greedy approach that looks ahead to avoid tiny final chunks.
+        Distribute sentences across speech_chunks to minimize size variance.
+        Uses a greedy approach that looks ahead to avoid tiny final speech_chunks.
         """
         if not sentences:
             return []
 
         total_length = sum(len(s) for s in sentences) + len(sentences) - 1
-        # Estimate number of chunks needed
+        # Estimate number of speech_chunks needed
         estimated_chunks = max(
             1, (total_length + self.chunk_limit - 1) // self.chunk_limit
         )
         target_size = total_length / estimated_chunks
 
-        chunks = []
+        speech_chunks = []
         current_chunk = ""
         remaining_sentences = len(sentences)
 
@@ -276,35 +276,35 @@ class TextChunker:
                     new_length > self.chunk_limit
                     and current_length >= target_size * 0.7
                 ):
-                    chunks.append(current_chunk)
+                    speech_chunks.append(current_chunk)
                     current_chunk = sentence
                 elif (
                     current_length >= target_size * 0.9
                     and remaining_text_length > target_size * 0.5
                 ):
                     # We're near target and there's enough remaining - start new chunk
-                    chunks.append(current_chunk)
+                    speech_chunks.append(current_chunk)
                     current_chunk = sentence
                 else:
                     current_chunk += " " + sentence
 
         if current_chunk:
-            chunks.append(current_chunk)
+            speech_chunks.append(current_chunk)
 
-        return chunks
+        return speech_chunks
 
-    def _merge_small_chunks(self, chunks: List[str]) -> List[str]:
+    def _merge_small_chunks(self, speech_chunks: List[str]) -> List[str]:
         """
-        Merge chunks that are smaller than the limit to optimize chunk sizes.
+        Merge speech_chunks that are smaller than the limit to optimize chunk sizes.
         Ensures the last chunk is not much smaller than the chunk_limit by merging it with the previous chunk if needed.
         """
-        if not chunks:
+        if not speech_chunks:
             return []
 
         merged = []
-        current = chunks[0]
+        current = speech_chunks[0]
 
-        for next_chunk in chunks[1:]:
+        for next_chunk in speech_chunks[1:]:
             # If combining won't exceed limit, merge them
             if len(current) + len(next_chunk) <= self.chunk_limit:
                 current += next_chunk
@@ -318,7 +318,7 @@ class TextChunker:
         # If the last chunk is much smaller than chunk_limit, merge it with the previous one
         # (unless there's only one chunk)
         if len(merged) >= 2 and len(merged[-1]) < self.chunk_limit * 0.5:
-            # Merge last two chunks
+            # Merge last two speech_chunks
             merged[-2] += merged[-1]
             merged.pop(-1)
 
@@ -328,7 +328,7 @@ class TextChunker:
         self, text: str, separators: List[SeparatorInfo], separator_idx: int = 0
     ) -> List[str]:
         """
-        Recursively split text using available separators until chunks fit the limit.
+        Recursively split text using available separators until speech_chunks fit the limit.
         Always falls back to sentence-aware splitting to avoid mid-sentence breaks.
         """
         # Base case: if text fits, return it
@@ -357,7 +357,7 @@ class TextChunker:
                 sub_chunks = self._recursive_split(split, separators, separator_idx + 1)
                 result.extend(sub_chunks)
 
-        # Merge small consecutive chunks
+        # Merge small consecutive speech_chunks
         result = self._merge_small_chunks(result)
 
         return result
@@ -373,7 +373,7 @@ class TextChunker:
             headings: Optional headings/context to prepend to each chunk (string)
 
         Returns:
-            List of text chunks, each optionally prefixed with the provided headings
+            List of text speech_chunks, each optionally prefixed with the provided headings
         """
         if not text:
             return []
@@ -391,13 +391,13 @@ class TextChunker:
         if not separators:
             if verbose:
                 print("No natural separators found, splitting by sentences")
-            chunks = self._split_by_sentences(text)
+            speech_chunks = self._split_by_sentences(text)
         else:
             # Recursively split using detected separators
-            chunks = self._recursive_split(text, separators)
+            speech_chunks = self._recursive_split(text, separators)
 
-        # Clean up chunks
-        chunks = [chunk.strip() for chunk in chunks if chunk.strip()]
+        # Clean up speech_chunks
+        speech_chunks = [chunk.strip() for chunk in speech_chunks if chunk.strip()]
 
         # Add headings to each chunk if provided
         if headings and headings.strip():
@@ -409,15 +409,15 @@ class TextChunker:
                 formatted_headings += "\n"
 
             # Prepend headings to each chunk
-            chunks = [f"#{formatted_headings}" + chunk for chunk in chunks]
+            speech_chunks = [f"#{formatted_headings}" + chunk for chunk in speech_chunks]
 
         if verbose:
-            print(f"Created {len(chunks)} chunks")
+            print(f"Created {len(speech_chunks)} speech_chunks")
             if headings:
                 print(f"Added headings to each chunk: '{headings.strip()}'")
-            print(f"Chunk sizes: {[len(c) for c in chunks]}")
+            print(f"Chunk sizes: {[len(c) for c in speech_chunks]}")
 
-        return chunks
+        return speech_chunks
 
 
 def detect_sql_syntax(query: str) -> dict:
@@ -674,24 +674,24 @@ def sql_to_aql(sql: str) -> str:
         if m:
             offset = int(m.group(1))
 
-    # Heuristic: if WHERE contains anforandetext LIKE '%term%' or LIKE '%term%' or anforandetext ILIKE, map to talks_search + SEARCH TOKENS
+    # Heuristic: if WHERE contains text LIKE '%term%' or LIKE '%term%' or text ILIKE, map to talks_search + SEARCH TOKENS
     use_view_search = False
     search_term = None
-    like_m = re.search(r"(?i)(anforandetext)\s+like\s+'%([^%']+)%'", s)
+    like_m = re.search(r"(?i)(text)\s+like\s+'%([^%']+)%'", s)
     if like_m:
         use_view_search = True
         search_term = like_m.group(2)
     else:
         # also check generic LIKE on any column -- if column looks like text, map to view
         like_m = re.search(r"(?i)([a-zA-Z0-9_\.]+)\s+like\s+'%([^%']+)%'", s)
-        if like_m and 'anforandetext' in like_m.group(1).lower():
+        if like_m and 'text' in like_m.group(1).lower():
             use_view_search = True
             search_term = like_m.group(2)
 
     # Start building AQL
     aql_lines = []
     if use_view_search:
-        aql_lines.append(f"FOR {from_alias} IN {from_table}_search".replace('_search_search','_search'))  # if talks -> talks_search
+        aql_lines.append(f"FOR {from_alias} IN {from_table}_search".replace('_search_search','_search'))  # if speeches -> talks_search
     else:
         aql_lines.append(f"FOR {from_alias} IN {from_table}")
 
@@ -703,7 +703,7 @@ def sql_to_aql(sql: str) -> str:
     filters = []
     # Add join ON conditions as FILTERs
     for _, j_alias, j_on in joins:
-        # j_on example: p._key = t.intressent_id
+        # j_on example: p._key = t.person_id
         cond = j_on.replace('=', '==')
         filters.append(cond.strip())
 
@@ -726,7 +726,7 @@ def sql_to_aql(sql: str) -> str:
 
     # If use_view_search, add SEARCH line
     if use_view_search and search_term:
-        aql_lines.append(f"  SEARCH ANALYZER({from_alias}.anforandetext IN TOKENS(\"{search_term}\", \"text_sv\"), \"text_sv\")")
+        aql_lines.append(f"  SEARCH ANALYZER({from_alias}.text IN TOKENS(\"{search_term}\", \"text_sv\"), \"text_sv\")")
 
     # SORT / ORDER BY conversion
     if order_by:
@@ -767,7 +767,7 @@ def sql_to_aql(sql: str) -> str:
         else:
             ret_items = []
             for c in cols:
-                # try to make a key: if "t._id" -> _id, if "p.fodd_ar" -> p_fodd_ar
+                # try to make a key: if "t._id" -> _id, if "p.birth_year" -> p_fodd_ar
                 key = re.sub(r'[^a-zA-Z0-9_]', '_', c)
                 ret_items.append(f'"{key}": {c}')
             ret_map = "{ " + ", ".join(ret_items) + " }"
@@ -779,9 +779,9 @@ def sql_to_aql(sql: str) -> str:
 # ---- small CLI for quick tests ----
 if __name__ == "__main__":
     examples = [
-        "SELECT COUNT(*) FROM talks WHERE anforandetext LIKE '%korallrev%';",
-        "SELECT t._id, p.fodd_ar FROM talks t JOIN people p ON p._key = t.intressent_id WHERE t.year = 2016;",
-        "SELECT parti, COUNT(*) FROM talks WHERE dok_datum >= '2016-01-01' AND dok_datum <= '2016-12-31' GROUP BY parti ORDER BY COUNT(*) DESC;"
+        "SELECT COUNT(*) FROM speeches WHERE text LIKE '%korallrev%';",
+        "SELECT t._id, p.birth_year FROM speeches t JOIN people p ON p._key = t.person_id WHERE t.year = 2016;",
+        "SELECT party, COUNT(*) FROM speeches WHERE source_datetime >= '2016-01-01' AND source_datetime <= '2016-12-31' GROUP BY party ORDER BY COUNT(*) DESC;"
     ]
     for sql in examples:
         print("SQL:", sql)

@@ -37,7 +37,7 @@ class ParsedQuery:
 
 class SearchService:
     """
-    Full-text and filtered search over the talks table using PostgreSQL.
+    Full-text and filtered search over the speeches table using PostgreSQL.
 
     Query syntax (same as before):
       - Single word:   "klimat"
@@ -185,28 +185,28 @@ class SearchService:
 
         if payload.parties:
             filter_params.append(list(payload.parties))
-            filter_clauses.append("t.parti = ANY(%s::text[])")
+            filter_clauses.append("t.party = ANY(%s::text[])")
 
         if getattr(payload, "speaker_ids", None):
             ids = payload.speaker_ids
             if isinstance(ids, str):
                 ids = [ids]
             filter_params.append(list(ids))
-            filter_clauses.append("t.intressent_id = ANY(%s::text[])")
+            filter_clauses.append("t.person_id = ANY(%s::text[])")
         elif getattr(payload, "speaker", None):
             filter_params.append(payload.speaker)
-            filter_clauses.append("t.talare = %s")
+            filter_clauses.append("t.speaker_name = %s")
 
         if getattr(payload, "people", None):
             sub = []
             for name in payload.people:
                 filter_params.append(f"%{name.lower()}%")
-                sub.append("LOWER(t.talare) LIKE %s")
+                sub.append("LOWER(t.speaker_name) LIKE %s")
             filter_clauses.append("(" + " OR ".join(sub) + ")")
 
         if getattr(payload, "debates", None):
             filter_params.append(list(payload.debates))
-            filter_clauses.append("t.kammaraktivitet = ANY(%s::text[])")
+            filter_clauses.append("t.activity_type = ANY(%s::text[])")
 
         year_start = parsed.years[0] if parsed.years else getattr(payload, "from_year", None)
         year_end   = parsed.years[1] if parsed.years else getattr(payload, "to_year", None)
@@ -218,7 +218,7 @@ class SearchService:
             filter_clauses.append("t.year <= %s")
 
         if focus_ids:
-            clean_focus = [fid.removeprefix("talks/") for fid in focus_ids]
+            clean_focus = [fid.removeprefix("speeches/") for fid in focus_ids]
             filter_params.append(clean_focus)
             filter_clauses.append("t.id = ANY(%s::text[])")
 
@@ -228,24 +228,24 @@ class SearchService:
             cte = f"WITH q AS (SELECT {tsq_sql} AS tsq)"
             cte_params = tsq_params
             fts_where = "t.search_vector @@ q.tsq"
-            order_by = "ts_rank_cd(t.search_vector, q.tsq) DESC, t.datum ASC, t.anforande_nummer ASC"
+            order_by = "ts_rank_cd(t.search_vector, q.tsq) DESC, t.date ASC, t.sequence ASC"
             if include_snippets:
                 headline_col = (
-                    f", ts_headline('{_FTS}', t.anforandetext, q.tsq, "
+                    f", ts_headline('{_FTS}', t.text, q.tsq, "
                     "'MaxWords=15, MinWords=8, MaxFragments=1') AS _headline"
-                    f", ts_headline('{_FTS}', t.anforandetext, q.tsq, "
+                    f", ts_headline('{_FTS}', t.text, q.tsq, "
                     "'MaxWords=60, MinWords=30, MaxFragments=4') AS _headline_long"
                 )
             else:
                 headline_col = ""
-            from_clause = "FROM talks t, q"
+            from_clause = "FROM speeches t, q"
             all_where = ([fts_where] + filter_clauses) if filter_clauses else [fts_where]
         else:
             cte = ""
             cte_params = []
             headline_col = ""
-            order_by = "t.datum ASC, t.anforande_nummer ASC"
-            from_clause = "FROM talks t"
+            order_by = "t.date ASC, t.sequence ASC"
+            from_clause = "FROM speeches t"
             all_where = filter_clauses
 
         where_sql = ("WHERE " + " AND ".join(all_where)) if all_where else ""
@@ -262,17 +262,17 @@ class SearchService:
         {cte}
         SELECT
             t.id,
-            t.anforandetext,
-            t.anforande_nummer,
-            t.kammaraktivitet,
-            t.talare,
-            t.datum::text AS datum,
+            t.text,
+            t.sequence,
+            t.activity_type,
+            t.speaker_name,
+            t.date::text AS date,
             t.year,
-            COALESCE(t.debateurl, t.url_session) AS debateurl,
-            t.parti,
-            t.intressent_id,
-            t.titel,
-            t.rel_dok_id
+            COALESCE(t.url_video, t.url_session) AS url_video,
+            t.party,
+            t.person_id,
+            t.title,
+            t.related_doc_id
             {headline_col}
         {from_clause}
         {where_sql}
@@ -292,7 +292,7 @@ class SearchService:
         # ── Build result objects ───────────────────────────────────────────────
         results = []
         for doc in rows:
-            text = doc.get("anforandetext") or ""
+            text = doc.get("text") or ""
             headline = doc.get("_headline") or ""
             headline_long = doc.get("_headline_long") or ""
 
@@ -304,32 +304,32 @@ class SearchService:
                 snippet = text[:200]
                 snippet_long = text[:800]
 
-            kammaraktivitet = doc.get("kammaraktivitet")
-            debate_info = PARLIAMENT.activity_types.get(kammaraktivitet, {})
+            activity_type = doc.get("activity_type")
+            debate_info = PARLIAMENT.activity_types.get(activity_type, {})
             debate_type_title = (
-                debate_info.get("title", kammaraktivitet)
+                debate_info.get("title", activity_type)
                 if isinstance(debate_info, dict)
                 else debate_info
             )
 
-            talk_id = doc.get("id") or ""
+            speech_id = doc.get("id") or ""
             results.append(
                 {
-                    "_id": f"talks/{talk_id}",
+                    "_id": f"speeches/{speech_id}",
                     "text": text,
                     "snippet": snippet,
                     "snippet_long": snippet_long,
-                    "number": doc.get("anforande_nummer"),
+                    "number": doc.get("sequence"),
                     "debate_type": debate_type_title,
-                    "kammaraktivitet": kammaraktivitet,
-                    "speaker": doc.get("talare"),
-                    "date": str(doc.get("datum") or ""),
+                    "activity_type": activity_type,
+                    "speaker": doc.get("speaker_name"),
+                    "date": str(doc.get("date") or ""),
                     "year": doc.get("year"),
-                    "url_session": doc.get("debateurl"),
-                    "party": doc.get("parti"),
-                    "intressent_id": doc.get("intressent_id"),
-                    "titel": doc.get("titel"),
-                    "rel_dok_id": doc.get("rel_dok_id"),
+                    "url_session": doc.get("url_video"),
+                    "party": doc.get("party"),
+                    "person_id": doc.get("person_id"),
+                    "title": doc.get("title"),
+                    "related_doc_id": doc.get("related_doc_id"),
                     "bm25": None,
                 }
             )
@@ -365,10 +365,10 @@ class SearchService:
 
 class MotionSearchService(SearchService):
     """
-    Full-text and filtered search over the motions table.
+    Full-text and filtered search over the documents table.
 
     Reuses parse_query()/_build_tsquery() from SearchService; only the SQL and
-    result shaping differ (motions have multiple authors and no debate fields).
+    result shaping differ (documents have multiple authors and no debate fields).
     """
 
     def search(
@@ -398,8 +398,8 @@ class MotionSearchService(SearchService):
                 ids = [ids]
             filter_params.append(list(ids))
             filter_clauses.append(
-                "EXISTS (SELECT 1 FROM motion_authors a"
-                " WHERE a.dok_id = m.dok_id AND a.intressent_id = ANY(%s::text[]))"
+                "EXISTS (SELECT 1 FROM document_authors a"
+                " WHERE a.doc_id = m.doc_id AND a.person_id = ANY(%s::text[]))"
             )
 
         if getattr(payload, "people", None):
@@ -407,8 +407,8 @@ class MotionSearchService(SearchService):
             for name in payload.people:
                 filter_params.append(f"%{name.lower()}%")
                 sub.append(
-                    "EXISTS (SELECT 1 FROM motion_authors a"
-                    " WHERE a.dok_id = m.dok_id AND LOWER(a.namn) LIKE %s)"
+                    "EXISTS (SELECT 1 FROM document_authors a"
+                    " WHERE a.doc_id = m.doc_id AND LOWER(a.name) LIKE %s)"
                 )
             filter_clauses.append("(" + " OR ".join(sub) + ")")
 
@@ -416,22 +416,22 @@ class MotionSearchService(SearchService):
         year_end   = parsed.years[1] if parsed.years else getattr(payload, "to_year", None)
         if year_start is not None:
             filter_params.append(year_start)
-            filter_clauses.append("m.year >= %s")
+            filter_clauses.append("m.session_year >= %s")
         if year_end is not None:
             filter_params.append(year_end)
-            filter_clauses.append("m.year <= %s")
+            filter_clauses.append("m.session_year <= %s")
 
         if focus_ids:
-            clean_focus = [fid.removeprefix("motions/") for fid in focus_ids]
+            clean_focus = [fid.removeprefix("documents/") for fid in focus_ids]
             filter_params.append(clean_focus)
-            filter_clauses.append("m.dok_id = ANY(%s::text[])")
+            filter_clauses.append("m.doc_id = ANY(%s::text[])")
 
         # ── Build SQL ─────────────────────────────────────────────────────────
         if tsq_sql:
             cte = f"WITH q AS (SELECT {tsq_sql} AS tsq)"
             cte_params = tsq_params
             fts_where = "m.search_vector @@ q.tsq"
-            order_by = "ts_rank_cd(m.search_vector, q.tsq) DESC, m.datum DESC"
+            order_by = "ts_rank_cd(m.search_vector, q.tsq) DESC, m.date DESC"
             if include_snippets:
                 headline_col = (
                     f", ts_headline('{_FTS}', m.text, q.tsq, "
@@ -441,14 +441,14 @@ class MotionSearchService(SearchService):
                 )
             else:
                 headline_col = ""
-            from_clause = "FROM motions m, q"
+            from_clause = "FROM documents m, q"
             all_where = ([fts_where] + filter_clauses) if filter_clauses else [fts_where]
         else:
             cte = ""
             cte_params = []
             headline_col = ""
-            order_by = "m.datum DESC"
-            from_clause = "FROM motions m"
+            order_by = "m.date DESC"
+            from_clause = "FROM documents m"
             all_where = filter_clauses
 
         where_sql = ("WHERE " + " AND ".join(all_where)) if all_where else ""
@@ -464,22 +464,22 @@ class MotionSearchService(SearchService):
         sql = f"""
         {cte}
         SELECT
-            m.dok_id,
+            m.doc_id,
             m.text,
-            m.titel,
-            m.undertitel,
-            m.rm,
-            m.beteckning,
-            m.subtyp,
-            m.organ,
+            m.title,
+            m.subtitle,
+            m.session_label,
+            m.designation,
+            m.subtype,
+            m.committee,
             m.status,
-            m.datum::text AS datum,
-            m.year,
+            m.date::text AS date,
+            m.year AS year,
             m.parties,
             m.author_names,
-            m.num_yrkanden,
+            m.num_proposals,
             m.has_text,
-            m.dokument_url_html
+            m.url_html
             {headline_col}
         {from_clause}
         {where_sql}
@@ -514,29 +514,29 @@ class MotionSearchService(SearchService):
             if len(author_names) > 3:
                 speaker += " m.fl."
 
-            dok_id = doc.get("dok_id") or ""
+            doc_id = doc.get("doc_id") or ""
             results.append(
                 {
-                    "_id": f"motions/{dok_id}",
+                    "_id": f"documents/{doc_id}",
                     "text": text,
                     "snippet": snippet,
                     "snippet_long": snippet_long,
                     "debate_type": "Motion",
                     "speaker": speaker,
                     "author_names": author_names,
-                    "date": str(doc.get("datum") or ""),
+                    "date": str(doc.get("date") or ""),
                     "year": doc.get("year"),
                     "party": "/".join(doc.get("parties") or []),
-                    "titel": doc.get("titel"),
-                    "undertitel": doc.get("undertitel"),
-                    "rm": doc.get("rm"),
-                    "beteckning": doc.get("beteckning"),
-                    "subtyp": doc.get("subtyp"),
-                    "organ": doc.get("organ"),
+                    "title": doc.get("title"),
+                    "subtitle": doc.get("subtitle"),
+                    "session_label": doc.get("session_label"),
+                    "designation": doc.get("designation"),
+                    "subtype": doc.get("subtype"),
+                    "committee": doc.get("committee"),
                     "status": doc.get("status"),
-                    "num_yrkanden": doc.get("num_yrkanden"),
+                    "num_proposals": doc.get("num_proposals"),
                     "has_text": doc.get("has_text"),
-                    "url_session": doc.get("dokument_url_html"),
+                    "url_session": doc.get("url_html"),
                     "bm25": None,
                 }
             )
@@ -587,7 +587,7 @@ if __name__ == "__main__":
 
     import sys
 
-    if len(sys.argv) > 1 and sys.argv[1] == "motions":
+    if len(sys.argv) > 1 and sys.argv[1] == "documents":
         svc = MotionSearchService()
         results, stats, limited = svc.search(Payload(q="kärnkraft", from_year=2022, to_year=None))
     else:

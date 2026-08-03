@@ -99,10 +99,10 @@ const SearchResultView = ({ card }: { card: LiveSearchCard }) => {
                             if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleOpen(); }
                         } : undefined}
                     >
-                        {result.intressent_id && (
+                        {result.person_id && (
                             <img
                                 className="rc-search__avatar talk-view__speaker-photo--enhanced"
-                                src={getMpPhotoUrl(result.intressent_id)}
+                                src={getMpPhotoUrl(result.person_id)}
                                 alt={result.speaker ?? ""}
                                 loading="lazy"
                                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
@@ -182,7 +182,7 @@ const AnswerText = ({ html }: { html: string }) => {
             openTalk(href.slice("/talk/".length));
         } else if (href?.startsWith("/motion/")) {
             e.preventDefault();
-            openTalk(`motions/${href.slice("/motion/".length)}`);
+            openTalk(`documents/${href.slice("/motion/".length)}`);
         } else if (href?.startsWith("/mp/")) {
             e.preventDefault();
             navigate(href);

@@ -91,7 +91,7 @@ def _collect_seen(structured, seen_talks: Dict[str, dict], seen_debates: Dict[st
                 entry.setdefault("party", h.party)
             if h.date:
                 entry.setdefault("date", str(h.date))
-        iid = meta.get("intressent_id")
+        iid = meta.get("person_id")
         if iid and h.speaker:
             seen_persons[str(iid)] = h.speaker
 

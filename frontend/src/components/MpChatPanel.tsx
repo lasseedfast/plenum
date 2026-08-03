@@ -53,7 +53,7 @@ function MpBubble({ photoUrl, answerHtml, answerMarkdown, sources }: MpBubblePro
             openTalk(href.slice("/talk/".length));
         } else if (href?.startsWith("/motion/")) {
             e.preventDefault();
-            openTalk(`motions/${href.slice("/motion/".length)}`);
+            openTalk(`documents/${href.slice("/motion/".length)}`);
         } else if (href?.startsWith("/mp/")) {
             e.preventDefault();
             navigate(href);
@@ -110,10 +110,10 @@ function MpBubble({ photoUrl, answerHtml, answerMarkdown, sources }: MpBubblePro
                         {sources.map((src, i) => (
                             <div key={`${src._id}-${i}`} className="mp-bubble-card__source">
                                 <div className="mp-bubble-card__source-meta">
-                                    {src.intressent_id && (
+                                    {src.person_id && (
                                         <img
                                             className="mp-bubble-card__source-avatar"
-                                            src={getMpPhotoUrl(src.intressent_id)}
+                                            src={getMpPhotoUrl(src.person_id)}
                                             alt=""
                                             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                                         />
@@ -128,9 +128,9 @@ function MpBubble({ photoUrl, answerHtml, answerMarkdown, sources }: MpBubblePro
                                         {src.snippet.replace(/\*\*(.*?)\*\*/g, "$1")}
                                     </p>
                                 )}
-                                {src.debateurl && (
+                                {src.url_video && (
                                     <a
-                                        href={src.debateurl}
+                                        href={src.url_video}
                                         className="mp-bubble-card__source-link"
                                         target="_blank"
                                         rel="noreferrer"
@@ -152,7 +152,7 @@ function MpBubble({ photoUrl, answerHtml, answerMarkdown, sources }: MpBubblePro
 const ORGAN_NAMES: Record<string, string> = {
     kam: "Kammaren",
     eu: "EU-nämnden",
-    upu: "Utrikespolitiska utskottet",
+    upu: "Utrikespolitiska committee_recommendation",
     au: "Arbetsmarknadsutskottet",
     civ: "Civilutskottet",
     fiu: "Finansutskottet",
@@ -208,12 +208,12 @@ function UppdragSection({ uppdrag }: { uppdrag: Uppdrag[] }) {
                             : null;
                         return (
                             <div key={i} className="mp-profile__uppdrag-row">
-                                <div className="mp-profile__uppdrag-period">
+                                <div className="mp-profile__uppdrag-year">
                                     {formatDate(u.from)} – {formatDate(u.tom)}
                                 </div>
                                 <div className="mp-profile__uppdrag-body">
                                     <span className="mp-profile__uppdrag-role">{u.roll_kod ?? u.status}</span>
-                                    {organName && <span className="mp-profile__uppdrag-organ">{organName}</span>}
+                                    {organName && <span className="mp-profile__uppdrag-committee">{organName}</span>}
                                     {u.uppgift && u.uppgift !== u.roll_kod && (
                                         <span className="mp-profile__uppdrag-uppgift">{u.uppgift}</span>
                                     )}
@@ -241,9 +241,9 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const lastSavedTurnsRef = useRef<string>("");
 
-    const tilltalsnamn = person.tilltalsnamn || person.namn.split(" ")[0];
-    const photoUrl = person.bild_url_192?.replace("http://", "https://")
-        || getMpPhotoUrl(person.intressent_id);
+    const first_name = person.first_name || person.name.split(" ")[0];
+    const photoUrl = person.image_url_medium?.replace("http://", "https://")
+        || getMpPhotoUrl(person.person_id);
     const isActive = person.status === "Tjänstgörande riksdagsledamot";
 
     useEffect(() => {
@@ -280,12 +280,12 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
                 llm_messages: messages,
                 turns,
                 focus_ids: [],
-                intressent_id: person.intressent_id,
-                initial_talk_id: initialTalkId ?? null,
+                person_id: person.person_id,
+                initial_speech_id: initialTalkId ?? null,
             };
             const titlePayload: EncTitlePayload = {
-                title: `${person.namn}: ${(turns[0]?.question ?? "").slice(0, 60)}`,
-                intressent_id: person.intressent_id,
+                title: `${person.name}: ${(turns[0]?.question ?? "").slice(0, 60)}`,
+                person_id: person.person_id,
             };
             Promise.all([encryptJson(dek, payload), encryptJson(dek, titlePayload)])
                 .then(([enc_payload, enc_title]) =>
@@ -295,14 +295,14 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
         } else {
             upsertSession(sessionId, {
                 session_type: "mp",
-                intressent_id: person.intressent_id,
-                initial_talk_id: initialTalkId,
+                person_id: person.person_id,
+                initial_speech_id: initialTalkId,
                 llm_messages: messages,
                 turns,
                 focus_ids: [],
             }).catch(() => {});
         }
-    }, [turns, isPending, sessionId, person.intressent_id, person.namn, initialTalkId, messages, user, dek]);
+    }, [turns, isPending, sessionId, person.person_id, person.name, initialTalkId, messages, user, dek]);
 
     const handleShare = async () => {
         const readyTurns = turns.filter(t => t.status === "ready");
@@ -311,8 +311,8 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
         try {
             const snapshotId = await createSnapshot({
                 session_type: "mp",
-                intressent_id: person.intressent_id,
-                initial_talk_id: initialTalkId,
+                person_id: person.person_id,
+                initial_speech_id: initialTalkId,
                 llm_messages: messages,
                 turns: readyTurns.map(t => ({
                     question: t.question,
@@ -355,8 +355,8 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
                 headers: { "Content-Type": "application/json", ...getSessionHeaders() },
                 body: JSON.stringify({
                     messages: nextMessages,
-                    intressent_id: person.intressent_id,
-                    initial_talk_id: initialTalkId ?? null,
+                    person_id: person.person_id,
+                    initial_speech_id: initialTalkId ?? null,
                     provider_override: providerOverride,
                 }),
                 signal: controller.signal,
@@ -415,7 +415,7 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
             clearTimeout(timeoutId);
             setIsPending(false);
         }
-    }, [isPending, messages, person.intressent_id, initialTalkId, providerOverride]);
+    }, [isPending, messages, person.person_id, initialTalkId, providerOverride]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === "Enter" && !e.shiftKey) {
@@ -436,15 +436,15 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
                 <img
                     className="mp-profile__photo"
                     src={photoUrl}
-                    alt={person.namn}
+                    alt={person.name}
                     onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                 />
                 <div className="mp-profile__info">
                     <div className="mp-profile__name-row">
-                        <h1 className="mp-profile__name">{person.namn}</h1>
-                        {person.parti && (
-                            <span className="party-chip" data-party={person.parti} style={{ "--party-color": `var(--party-${person.parti ?? ""})` } as React.CSSProperties}>
-                                {person.parti}
+                        <h1 className="mp-profile__name">{person.name}</h1>
+                        {person.party && (
+                            <span className="party-chip" data-party={person.party} style={{ "--party-color": `var(--party-${person.party ?? ""})` } as React.CSSProperties}>
+                                {person.party}
                             </span>
                         )}
                         {isActive && (
@@ -452,16 +452,16 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
                         )}
                     </div>
                     <dl className="mp-profile__meta">
-                        {person.valkrets && (
+                        {person.constituency && (
                             <>
                                 <dt>Valkrets</dt>
-                                <dd>{person.valkrets}</dd>
+                                <dd>{person.constituency}</dd>
                             </>
                         )}
-                        {person.fodd_ar && (
+                        {person.birth_year && (
                             <>
                                 <dt>Född</dt>
-                                <dd>{person.fodd_ar}</dd>
+                                <dd>{person.birth_year}</dd>
                             </>
                         )}
                         {person.status && !isActive && (
@@ -482,9 +482,9 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
             {/* Chat section */}
             <div className="mp-profile__chat panel">
                 <div className="mp-profile__chat-header">
-                    <h2 className="mp-profile__chat-title">Chatta med {tilltalsnamn}</h2>
+                    <h2 className="mp-profile__chat-title">Chatta med {first_name}</h2>
                     <div className="mp-profile__chat-disclaimer">
-                        <span>Digital assistent – inte den riktiga {tilltalsnamn}. Svaren bygger på anföranden i riksdagen.</span>
+                        <span>Digital assistent – inte den riktiga {first_name}. Svaren bygger på anföranden i riksdagen.</span>
                         <span className="mp-chat__experimental">Experimentell</span>
                     </div>
                 </div>
@@ -492,7 +492,7 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
                 <div className="mp-chat__messages" aria-live="polite">
                     {turns.length === 0 && (
                         <div className="mp-chat__empty">
-                            Ställ en fråga till {tilltalsnamn}!
+                            Ställ en fråga till {first_name}!
                         </div>
                     )}
 
@@ -546,7 +546,7 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
                     <textarea
                         ref={textareaRef}
                         className="mp-chat__input"
-                        placeholder={`Skriv en fråga till ${tilltalsnamn}…`}
+                        placeholder={`Skriv en fråga till ${first_name}…`}
                         value={input}
                         disabled={isPending}
                         rows={1}

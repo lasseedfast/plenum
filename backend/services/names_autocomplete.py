@@ -15,7 +15,7 @@ def suggest(q: str, limit: int = 8) -> List[Dict[str, str]]:
         limit: Maximum number of matches to return (defaults to 8).
 
     Returns:
-        A list of dicts with ``name`` and ``intressent_id`` fields.
+        A list of dicts with ``name`` and ``person_id`` fields.
     """
     query = (q or "").strip()
     if len(query) < 3:
@@ -23,12 +23,12 @@ def suggest(q: str, limit: int = 8) -> List[Dict[str, str]]:
 
     rows = pg.execute(
         """
-        SELECT namn, intressent_id
+        SELECT name, person_id
         FROM people
-        WHERE LOWER(namn) LIKE %s
-        ORDER BY namn
+        WHERE LOWER(name) LIKE %s
+        ORDER BY name
         LIMIT %s
         """,
         (f"{query.lower()}%", limit),
     )
-    return [{"name": row["namn"], "_key": row["intressent_id"]} for row in rows]
+    return [{"name": row["name"], "_key": row["person_id"]} for row in rows]
