@@ -21,6 +21,28 @@ country-specific lives in one file.
 > answer that cannot be traced to a source is a bug, not a rough edge. If you change
 > the prompts or the retrieval logic, keep that property.
 
+## Setting this up? Start here
+
+There are a few moving parts — a database, a chat model, an embedding model, and your
+parliament's data. The quickest way through all of it is to let an AI assistant walk
+you through it.
+
+**Open this repository with your assistant of choice and paste:**
+
+> I want to set up **plenum** for the *[your parliament]*. Read
+> `docs/ASSISTANT-SETUP.md` and walk me through it — ask me the questions in the
+> interview one section at a time, run the checks yourself, and tell me what you find
+> before changing anything. I am not an expert on databases or git, so explain
+> trade-offs in plain terms and tell me when a choice does not matter.
+
+[**docs/ASSISTANT-SETUP.md**](docs/ASSISTANT-SETUP.md) tells the assistant what to ask,
+what to check, and what not to invent. It starts by running `python scripts/doctor.py`,
+which inspects your machine — database, models, GPU, free ports — so you are not asked
+things that can simply be looked up.
+
+Prefer to do it yourself? [docs/SETUP.md](docs/SETUP.md) is the same ground, manually,
+with a verification command after every step.
+
 ## How it stays country-agnostic
 
 | Concern | Where it lives |
