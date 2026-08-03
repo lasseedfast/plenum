@@ -1,8 +1,6 @@
 # SearchService using PostgreSQL full-text search (tsvector/tsquery) with Swedish dictionary.
 #
-# Replaces the ArangoSearch-based implementation.
 # - BM25 → ts_rank_cd() (similar ranking, different formula)
-# - ArangoSearch view → GIN index on search_vector (tsvector column)
 # - OFFSET_INFO highlighting → ts_headline()
 # - PHRASE() → phraseto_tsquery()
 # - TOKENS() → plainto_tsquery()

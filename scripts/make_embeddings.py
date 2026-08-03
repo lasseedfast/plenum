@@ -1,7 +1,6 @@
 """
 Chunks and embeds all speeches that are not yet represented in the 'speech_chunks' table.
 
-Replaces scripts/make_arango_embeddings.py.
 
 Pipeline:
   1. Find all speeches with no chunk rows in PostgreSQL via LEFT JOIN.

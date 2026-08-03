@@ -9,7 +9,10 @@ parliament.local.yaml
 *.p12
 id_rsa*
 credentials*.json
-.claude/settings.local.json
+# Claude Code workspace config. Excluded wholesale: settings.json can carry
+# credentials inside allowlisted commands, which is how a live database password
+# ended up committed to the predecessor repository.
+.claude/
 
 # Archives. A WireGuard backup was committed to the predecessor repo this way.
 *.tgz

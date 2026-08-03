@@ -1,7 +1,6 @@
 """
 Hanterar debatt-ID:n och sammanfattningar av debatter i PostgreSQL.
 
-Ersätter den ArangoDB-baserade versionen.
 
 Funktioner:
   assign_debate_ids(docs, date) → lägger till 'debate' fält i dokumentlistan

@@ -1,7 +1,7 @@
 """
 PostgreSQL client for the Riksdagen project.
 
-Provides a simple interface mirroring _arango/_arango.py, using psycopg2
+A small wrapper over psycopg2
 with a thread-safe connection pool. Includes pgvector support for embeddings.
 
 Environment variables:

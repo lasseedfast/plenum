@@ -173,7 +173,7 @@ _fast_llm_var: ContextVar[Optional[Any]] = ContextVar(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# database_query  (direct SQL — no more SQL→AQL translation)
+# database_query
 # ─────────────────────────────────────────────────────────────────────────────
 
 @register_tool()
@@ -1115,10 +1115,10 @@ def read_documents_for(question: str, _ids: list[str]) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# _normalize_arango_search_args  (unchanged helper)
+# _normalize_search_args  (unchanged helper)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _normalize_arango_search_args(
+def _normalize_search_args(
     query: str,
     parties: Optional[Union[str, List[str]]] = None,
     people: Optional[Union[str, List[str]]] = None,
@@ -1225,7 +1225,7 @@ def search_speeches(
             if bad:
                 return f"ERROR: person_ids must be numeric strings (e.g. '0448485371626'). Invalid values: {bad}. Use the `people` parameter to search by name, or only pass person_ids you have seen in previous results."
 
-    args = _normalize_arango_search_args(
+    args = _normalize_search_args(
         query=query,
         parties=parties,
         people=people,
@@ -1406,7 +1406,7 @@ def search_documents(
             if bad:
                 return f"ERROR: person_ids must be numeric strings (e.g. '0448485371626'). Invalid values: {bad}. Use the `people` parameter to search by name, or only pass person_ids you have seen in previous results."
 
-    args = _normalize_arango_search_args(
+    args = _normalize_search_args(
         query=query,
         parties=parties,
         people=people,

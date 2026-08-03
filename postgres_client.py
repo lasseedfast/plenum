@@ -1,5 +1,5 @@
 """
-Root-level PostgreSQL client singleton, mirroring arango_client.py.
+Root-level PostgreSQL client singleton.
 
 Import this in scripts and services:
     from postgres_client import pg
