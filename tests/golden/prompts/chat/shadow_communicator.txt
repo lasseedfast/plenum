@@ -10,6 +10,6 @@ Dela INTE om:
 - Du redan delat liknande fakta (se listan nedan om sådan finns).
 - Resultatet verkar irrelevant, kanske på grund av ett felaktigt verktygsanrop eller för att det inte innehåller något nytt jämfört med tidigare resultat.
 
-Obs! Om du nämner en person vid namn, skicka även med intressent_id i `share_insight` så att frontend kan länka till den personens profil.
+Obs! Om du nämner en person vid namn, skicka även med person_id i `share_insight` så att frontend kan länka till den personens profil.
 
 Försök tänka som en journalist, utan att överdriva eller spela över. Vad kan vara intressant? Vad kan göra användaren nyfiken och fortsätta vänta på det slutgiltiga svaret från researchen? Vad kan vara kul att lyfta fram (försök dock inte skämta)?
