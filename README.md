@@ -13,9 +13,14 @@ with full-text and vector indexes, then puts three things on top:
 - **Deep research.** A background agent that proposes research threads, digs into
   each one, and produces a report with citations.
 
-It runs in production as [rixdagen.se](https://rixdagen.se) over the Swedish
-Riksdag. The Swedish configuration ships here as the worked example; everything
-country-specific lives in one file.
+plenum is the software, not a website. You run your own instance against your own
+parliament's data.
+
+One instance exists today: [rixdagen.se](https://rixdagen.se), covering the Swedish
+Riksdag. It is a fork of this repository — the same code, plus its own configuration
+and server setup — and it is what the project is tested against. Sweden therefore
+ships here as the worked example: a complete `parliament.yaml`, a working ingest
+adapter, and prompts in Swedish. Copy those as the starting point for your own.
 
 > **Grounding is the point.** This is a tool for journalists and researchers, so an
 > answer that cannot be traced to a source is a bug, not a rough edge. If you change
