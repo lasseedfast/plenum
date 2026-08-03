@@ -22,11 +22,17 @@ from typing import Any, Iterable, Iterator, Optional
 # ── source quirks ─────────────────────────────────────────────────────────────
 
 
-def _as_list(value: Any) -> list:
-    """One child arrives as an object, several as a list, none as null."""
+def _as_list(value: Any) -> list[dict]:
+    """One child arrives as an object, several as a list, none as null.
+
+    Non-object entries are dropped rather than raising: a handful of records in
+    the archive carry a bare string where a child element is expected, and one
+    malformed row should not abort a multi-hour load.
+    """
     if value is None:
         return []
-    return value if isinstance(value, list) else [value]
+    items = value if isinstance(value, list) else [value]
+    return [i for i in items if isinstance(i, dict)]
 
 
 def _clean(value: Any) -> Any:
@@ -166,7 +172,9 @@ def adapt_document(payload: dict) -> Optional[dict]:
             "ordinal": i,
             "person_id": _clean(person.get("intressent_id")),
             "name": _clean(person.get("namn")),
-            "party": _clean(person.get("partibet")),
+            # The archive carries both "S" and "s" for the same party. Left as-is,
+            # a filter on 'S' silently misses half the documents.
+            "party": (_clean(person.get("partibet")) or "").upper() or None,
             "role": _clean(person.get("roll")),
         })
 

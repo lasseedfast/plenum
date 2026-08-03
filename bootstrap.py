@@ -1,6 +1,6 @@
 """Locate the project root and make it importable.
 
-Scripts under ``scripts/`` are run directly (``python scripts/sync_talks.py``), so
+Scripts under ``scripts/`` are run directly (``python scripts/make_embeddings.py``), so
 the repository root is not on ``sys.path`` and relative paths would resolve against
 whatever directory the caller happened to be in. Importing this module fixes both,
 deriving the root from this file's own location.

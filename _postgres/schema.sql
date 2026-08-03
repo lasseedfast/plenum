@@ -177,6 +177,12 @@ CREATE INDEX IF NOT EXISTS debates_summary_embedding_idx ON debates
 CREATE TABLE IF NOT EXISTS documents (
     -- Primary key: doc_id (e.g. "HD02846")
     doc_id          TEXT PRIMARY KEY,
+
+    -- Which kind of member-submitted document this is. Everything is 'motion'
+    -- today; the column exists so bills, written questions and committee reports
+    -- can share this table rather than each needing their own.
+    doc_type        TEXT NOT NULL DEFAULT 'motion',
+
     source_record_id       TEXT,
 
     -- Identity / classification

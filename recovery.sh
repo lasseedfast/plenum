@@ -7,7 +7,7 @@
 #   bash recovery.sh 2>&1 | tee logs/recovery.log
 #
 # Steps (ordered, each depends on the previous):
-#   1. Load ~450k raw talks from disk JSON files  (documents_to_postgres.py)
+#   1. Load raw speeches from disk JSON files  (ingest.cli load)
 #   2. Enrich with summaries+tags from talks_training in ArangoDB
 #   3. Assign debate IDs to talks that don't have one
 #   4. Migrate debates from ArangoDB
@@ -48,9 +48,9 @@ ok "Pre-flight passed"
 # =============================================================================
 # STEP 1 — Load all talks from disk JSON files
 # =============================================================================
-step "Step 1 — Load talks from disk (documents_to_postgres.py)"
+step "Step 1 — Load speeches from disk (ingest.cli load)"
 
-$PYTHON scripts/documents_to_postgres.py \
+$PYTHON -m ingest.cli load --source speeches \
     2>&1 | tee "$LOG_DIR/step1_documents_to_postgres.log"
 
 ok "Step 1 done"
