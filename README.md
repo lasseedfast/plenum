@@ -52,8 +52,11 @@ while the country's own word lives in `parliament.yaml`. See
 
 ## Quickstart
 
+Full step-by-step setup, including how to plug in each model provider and how to
+verify each stage worked, is in **[docs/SETUP.md](docs/SETUP.md)**. The short version:
+
 ```bash
-git clone https://git.edfast.se/plenum/plenum && cd plenum
+git clone https://git.edfast.se/lasse/plenum && cd plenum
 cp .env.example .env         # then fill in database and model settings
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ```

@@ -1,113 +1,92 @@
-# Template for providers.yaml
+# Copy to providers.yaml and edit. providers.yaml is gitignored.
 #
-# You can add any OpenAI API compatible provider to the "providers" list.
-# For each provider you must also specify a list of models, along with model abilities.
+# This file lists the chat models a user can pick in the web UI. It does NOT
+# configure embeddings — those are separate and set via environment variables.
+# See docs/SETUP.md.
 #
-# All fields are required unless marked as optional.
+# Every provider must speak the OpenAI chat-completions protocol. That includes
+# vLLM, Ollama, llama.cpp, LM Studio, OpenRouter, Berget, OpenAI, Together,
+# Groq, and Google Gemini's compatibility endpoint.
 #
-# Refer to your provider's API documentation for specific
-# details such as model identifiers, capabilities etc
+# Fields the application reads — anything else is ignored:
 #
-# Note: Since the OpenAI API is not a standard we can't guarantee that all
-# providers will work correctly with Raycast AI.
-#
-# To use this template rename as `providers.yaml`
-#
-providers:
-  - id: perplexity
-    name: Perplexity
-    base_url: https://api.perplexity.ai
-    # Specify at least one api key if authentication is required.
-    # Optional if authentication is not required or is provided elsewhere.
-    # If individual models require separate api keys, then specify a separate `key` for each model's `provider`
-    api_keys:
-      perplexity: PERPLEXITY_KEY
-    # Optional additional parameters sent to the `/chat/completions` endpoint
-    additional_parameters:
-      return_images: true
-      web_search_options:
-        search_context_size: medium
-    # Specify all models to use with the current provider
-    models:
-      - id: sonar # `id` must match the identifier used by the provider
-        name: Sonar # name visible in Raycast
-        provider: perplexity # Only required if mapping to a specific api key
-        description: Perplexity AI model for general-purpose queries # optional
-        context: 128000 # refer to provider's API documentation
-        # Optional abilities - all child properties are also optional.
-        # If you specify abilities incorrectly the model may fail to work as expected in Raycast AI.
-        # Refer to provider's API documentation for model abilities.
-        abilities:
-          temperature:
-            supported: true
-          vision:
-            supported: true
-          system_message:
-            supported: true
-          tools:
-            supported: false
-          reasoning_effort:
-            supported: false
-      - id: sonar-pro
-        name: Sonar Pro
-        description: Perplexity AI model for complex queries
-        context: 200000
-        abilities:
-          temperature:
-            supported: true
-          vision:
-            supported: true
-          system_message:
-            supported: true
-  # provider with multiple api keys
-  - id: my_provider
-    name: My Provider
-    base_url: http://localhost:4000
-    api_keys:
-      openai: OPENAI_KEY
-      anthropic: ANTHROPIC_KEY
-    models:
-      - id: gpt-4o
-        name: "GPT-4o"
-        context: 200000
-        provider: openai # matches "openai" in api_keys
-        abilities:
-          temperature:
-            supported: true
-          vision:
-            supported: true
-          system_message:
-            supported: true
-          tools:
-            supported: true
-      - id: claude-sonnet-4
-        name: "Claude Sonnet 4"
-        context: 200000
-        provider: anthropic # matches "anthropic" in api_keys
-        abilities:
-          temperature:
-            supported: true
-          vision:
-            supported: true
-          system_message:
-            supported: true
-          tools:
-            supported: true
-  - id: litellm
-    name: LiteLLM
-    base_url: http://localhost:4000
-    # No `api_keys` - authentication is provided by the LiteLLM config
-    models:
-      - id: anthropic/claude-sonnet-4-20250514
-        name: "Claude Sonnet 4"
-        context: 200000
-        abilities:
-          temperature:
-            supported: true
-          vision:
-            supported: true
-          system_message:
-            supported: true
-          tools:
-            supported: true
+#   id                 required. Stable identifier used in API requests.
+#   name               required. Shown in the model picker.
+#   base_url           required. Include the /v1 suffix if the provider uses one.
+#   user_api_key       required. true  = the user supplies their own key in the browser.
+#                                false = the server's key is used, from server_api_key_env.
+#   server_api_key_env optional. NAME of an environment variable holding the key.
+#                      Never put the key itself here.
+#   supports_thinking  optional, default false. Whether the model can emit reasoning.
+#   models             optional. Assigns roles; without it the app falls back to
+#                      LLM_MODEL_SMART / LLM_MODEL_FAST from .env.
+#                        role: smart -> orchestration and final answers
+#                        role: fast  -> summarising tool output; a smaller model is fine
 
+providers:
+  # ── Self-hosted, no API key ────────────────────────────────────────────────
+  # vLLM: fastest option on a machine with a GPU.
+  #   vllm serve Qwen/Qwen3-8B --port 8000
+  - id: vllm
+    name: Local vLLM
+    base_url: http://localhost:8000/v1
+    user_api_key: false
+    supports_thinking: true
+    models:
+      - id: Qwen/Qwen3-8B
+        role: smart
+      - id: Qwen/Qwen3-4B
+        role: fast
+
+  # Ollama: easiest option, runs on CPU, slower.
+  #   ollama serve && ollama pull qwen3:8b
+  # The /v1 suffix matters — Ollama's native API is not OpenAI-compatible, its /v1 is.
+  - id: ollama
+    name: Ollama
+    base_url: http://localhost:11434/v1
+    user_api_key: false
+    supports_thinking: false
+    models:
+      - id: qwen3:8b
+        role: smart
+      - id: qwen3:4b
+        role: fast
+
+  # ── Hosted, user brings their own key ──────────────────────────────────────
+  # The key is entered in the browser, held only for the request, and never
+  # written to the database or to logs.
+  - id: openrouter
+    name: OpenRouter
+    base_url: https://openrouter.ai/api/v1
+    user_api_key: true
+    supports_thinking: true
+
+  - id: openai
+    name: OpenAI
+    base_url: https://api.openai.com/v1
+    user_api_key: true
+    supports_thinking: true
+
+  # Berget AI — Swedish provider, EU-hosted. Relevant where data residency matters.
+  - id: berget
+    name: Berget AI
+    base_url: https://api.berget.ai/v1
+    user_api_key: true
+    supports_thinking: true
+
+  # Google Gemini via its OpenAI-compatibility endpoint. The trailing slash matters.
+  - id: googlegemini
+    name: Google Gemini
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    user_api_key: true
+    supports_thinking: true
+
+  # ── Hosted, paid for by the server ─────────────────────────────────────────
+  # With user_api_key: false, every user spends your credit. Only do this behind
+  # authentication.
+  # - id: openai-server
+  #   name: OpenAI (server key)
+  #   base_url: https://api.openai.com/v1
+  #   user_api_key: false
+  #   server_api_key_env: OPENAI_API_KEY
+  #   supports_thinking: true
