@@ -49,7 +49,7 @@ check-fork-divergence: ## Verify the fork differs from upstream only under deplo
 upstream-pending: ## For a fork: list local commits owed upstream
 	@git fetch --quiet upstream 2>/dev/null || { echo "No 'upstream' remote."; exit 1; }
 	@echo "Marked 'Upstream: yes' and not yet upstream:"
-	@git log --format='  %h %s' --grep='^Upstream: *[Yy]es' upstream/main..HEAD | grep . || echo "  (none)"
+	@git log --format='  %h %s' --grep='^Upstream: *[Yy]es' --no-merges upstream/main..HEAD | grep . || echo "  (none)"
 	@echo
 	@echo "No Upstream: marker — decide, then amend the message:"
-	@git log --format='  %h %s' --invert-grep --grep='^Upstream:' upstream/main..HEAD | grep . || echo "  (none)"
+	@git log --format='  %h %s' --invert-grep --grep='^Upstream:' --no-merges upstream/main..HEAD | grep . || echo "  (none)"
