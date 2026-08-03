@@ -1,4 +1,4 @@
-.PHONY: help setup dev backend frontend build test lint schema mcp check-fork-divergence
+.PHONY: help setup dev backend frontend build test lint schema mcp check-fork-divergence upstream-pending
 
 help:
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
@@ -45,3 +45,15 @@ check-fork-divergence: ## Verify the fork differs from upstream only under deplo
 	else \
 		echo "Fork is clean: no differences outside deploy/prod/."; \
 	fi
+
+upstream-pending: ## For a fork: list local commits marked "Upstream: yes" that upstream lacks
+	@git fetch --quiet upstream 2>/dev/null || { echo "No 'upstream' remote."; exit 1; }
+	@echo "Marked for upstream, not yet there:"
+	@git log --format='%h %s%n%b' upstream/main..HEAD 2>/dev/null \
+	  | awk '/^[0-9a-f]{7,} /{h=$$0} /^Upstream: *[Yy]es/{print "  " h}' \
+	  | grep . || echo "  (none)"
+	@echo
+	@echo "Unmarked — decide and amend, or ignore:"
+	@git log --format='%H%x09%h %s' upstream/main..HEAD 2>/dev/null | while IFS=$$'\t' read -r sha line; do \
+	  git log -1 --format='%B' "$$sha" | grep -qi '^Upstream:' || echo "  $$line"; \
+	done | grep . || echo "  (none)"
