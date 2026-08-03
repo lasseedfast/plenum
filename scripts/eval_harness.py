@@ -319,7 +319,7 @@ def _fetch_full_talks(talk_ids: List[str]) -> Dict[str, str]:
 _SCORER_COMBINED_MAX_CHARS = 28_000
 
 
-_SCORER_ENDPOINT = os.environ.get("SCORER_ENDPOINT", "http://localhost:8001/v1/score")
+_SCORER_ENDPOINT = os.environ.get("SCORER_ENDPOINT", "http://localhost:8005/v1/score")
 _SCORER_MODEL = "BAAI/bge-reranker-v2-m3"
 
 

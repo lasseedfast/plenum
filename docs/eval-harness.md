@@ -90,7 +90,7 @@ Three tables (see `_postgres/migrations/add_eval_tables.sql`):
 
 ### `coverage_score` (cross-encoder grounding signal)
 
-A 0–1 probability from a `BAAI/bge-reranker-v2-m3` cross-encoder served locally on port 8001
+A 0–1 probability from a `BAAI/bge-reranker-v2-m3` cross-encoder served locally on port 8005
 via vLLM. For each paragraph, **all** cited source texts are concatenated (up to 28 000 chars /
 ≈7 000 tokens) and scored against the paragraph as a single call. The raw logit is converted
 via sigmoid so 0.5 = neutral, >0.7 = likely grounded, <0.3 = likely hallucinated.
@@ -101,7 +101,7 @@ Start the scorer (first run downloads the model to `$HOME/models`):
 
 ```bash
 nohup vllm serve BAAI/bge-reranker-v2-m3 \
-  --port 8001 \
+  --port 8005 \
   --download-dir $HOME/models \
   --gpu-memory-utilization 0.2 \
   --max-model-len 8192 \

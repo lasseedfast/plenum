@@ -1,94 +1,87 @@
-# **Scorer Integration Guide (RTX 3060 / vLLM)**
+# Citation coverage scoring
 
-This guide adds a coverage\_score column to your Swedish Parliament evaluation harness using a high-speed "Cross-Encoder" (Reranker) model.
+An **optional** add-on to the [evaluation harness](eval-harness.md). It measures how
+well a cited source actually supports the paragraph citing it, filling in
+`eval_judgments.coverage_score`.
 
-## **1\. How it works**
+Everything else in the harness works without it. If the scorer is unreachable the run
+completes normally and `coverage_score` is left NULL.
 
-* **The Model:** BAAI/bge-reranker-v2-m3 acts as a "Scorer." It looks at the Source and the Paragraph simultaneously and outputs a relevance score.  
-* **The API:** We use vLLM's /v1/score (or /v1/rerank) endpoint. It is 10x faster than Qwen because it doesn't generate text; it only computes a single mathematical "head".  
-* **The GPU:** On your RTX 3060, this runs in the background with very low VRAM usage (\~2GB if quantized).
+## Why it exists
 
-## **2\. Infrastructure Setup**
+The harness already asks a judge model whether a paragraph is supported by its
+citations. That is a generative call: slow, and it answers in prose that has to be
+parsed.
 
-Run this command on your Debian server to start the scorer. vLLM will automatically download the model from HuggingFace on the first run.  
-docker run \--gpus all \\  
-  \-p 8001:8000 \\  
-  \--name eval-scorer \\  
-  vllm/vllm-openai \\  
-  \--model BAAI/bge-reranker-v2-m3 \\  
-  \--device cuda \\  
-  \--max-model-len 4096 \\  
-  \--gpu-memory-utilization 0.2 \\  
-  \--trust-remote-code
+A cross-encoder answers a narrower question — *how relevant is this source to this
+text?* — as a single number. It reads the source and the paragraph together and emits
+one score with no generation at all, so it runs roughly an order of magnitude faster
+and costs almost no VRAM.
 
-## **3\. Database & Code Integration**
+The two measure different things and are worth having together: the judge catches
+claims a source contradicts, the scorer catches claims a source simply does not cover.
 
-### **Step A: Update SQL**
+## Running it
 
-ALTER TABLE eval\_judgments ADD COLUMN coverage\_score FLOAT DEFAULT 0.0;
+Any endpoint implementing OpenAI's `/v1/score` or `/v1/rerank` will do. With vLLM:
 
-### **Step B: The Python Logic (Add to eval\_harness.py)**
+```bash
+docker run --gpus all -p 8005:8000 --name plenum-scorer \
+  vllm/vllm-openai \
+  --model BAAI/bge-reranker-v2-m3 \
+  --max-model-len 4096 \
+  --gpu-memory-utilization 0.2
+```
 
-Add this class to handle the communication with vLLM. Note the use of the sigmoid function to turn the model's "logits" into a 0-1 probability.  
-import requests  
-import math
+`bge-reranker-v2-m3` is multilingual and small — around 2 GB of VRAM, so it coexists
+with a chat model on one consumer GPU.
 
-class CitationScorer:  
-    """Connects to the vLLM /v1/score endpoint."""  
-    def \_\_init\_\_(self, endpoint: str \= "http://localhost:8001/v1/score"):  
-        self.endpoint \= endpoint
+Then point the harness at it:
 
-    def get\_score(self, paragraph: str, sources: str) \-\> float:  
-        """Calculates a support probability (0.0 to 1.0)."""  
-        try:  
-            payload \= {  
-                "model": "BAAI/bge-reranker-v2-m3",  
-                "text\_1": sources\[:12000\], \# Truncate long sources for speed  
-                "text\_2": paragraph  
-            }  
-            response \= requests.post(self.endpoint, json=payload, timeout=5)  
-            if response.status\_code \== 200:  
-                \# BGE-Reranker-v2 outputs logits. Sigmoid converts to 0-1.  
-                data \= response.json().get("data", \[\])  
-                if data:  
-                    raw\_logit \= data\[0\].get("score", \-10.0)  
-                    return 1 / (1 \+ math.exp(-raw\_logit))  
-            return 0.0  
-        except Exception as e:  
-            print(f"\[scorer\] Error calling vLLM: {e}")  
-            return 0.0
+```bash
+export SCORER_ENDPOINT=http://localhost:8005/v1/score
+```
 
-### **Step C: Update the Main Evaluation Loop**
+> **Port note:** the MCP server (`make mcp`) also defaults to 8001, which is why the
+> example above uses 8005. If you run both, give them different ports.
 
-In eval\_harness.py, modify the section where you process judgments:  
-\# Initialize once at start  
-scorer \= CitationScorer()
+**Verify:**
 
-\# ... inside the paragraph loop ...  
-try:  
-    \# 1\. Get the standard LLM verdict (Qwen/etc)  
-    judgments \= judge.verdict(answer, sources\_compact)  
-      
-    \# 2\. Add the quantitative Scorer verdict  
-    for j in judgments:  
-        p\_text \= j.get("paragraph\_text", "")  
-        \# The scorer gives a 0-1 confidence that the source supports this paragraph  
-        j\["coverage\_score"\] \= scorer.get\_score(p\_text, sources\_compact)
+```bash
+curl -s http://localhost:8005/v1/score \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"BAAI/bge-reranker-v2-m3",
+       "text_1":"Riksdagen beslutade om ny kärnkraft.",
+       "text_2":"Vad sa riksdagen om kärnkraft?"}' | head -c 200
+```
 
-    \# 3\. Save to Postgres (Ensure your insert\_judgments helper handles this key)  
-    insert\_judgments(question\_id, judgments, judge\_model)  
-except Exception as e:  
-    print(f"Error in judge/scorer loop: {e}")
+A JSON body containing a score means it works. Connection refused means the container
+is not running, and the harness will skip scoring rather than fail.
 
-## **4\. Verification**
+## Reading the result
 
-To verify it's working without running the whole script:  
-curl http://localhost:8001/v1/score \\  
-  \-H "Content-Type: application/json" \\  
-  \-d '{  
-    "model": "BAAI/bge-reranker-v2-m3",  
-    "text\_1": "The Riksdag consists of 349 members.",  
-    "text\_2": "There are 349 politicians in the Swedish parliament."  
-  }'
+`coverage_score` is 0–1, the sigmoid of the model's logit.
 
-*(You should see a high positive score).*
+| Range | Reading |
+|---|---|
+| > 0.8 | The source directly supports the paragraph |
+| 0.4 – 0.8 | Related, but the paragraph may overreach |
+| < 0.4 | The citation does not support the claim — worth reading by hand |
+
+Low scores are the interesting ones. A run where the judge says "supported" but
+coverage is low usually means an answer that is technically defensible and practically
+misleading — exactly the failure this project cares about most.
+
+```sql
+SELECT q.question, j.paragraph_text, j.coverage_score
+FROM eval_judgments j JOIN eval_questions q ON q.id = j.question_id
+WHERE j.coverage_score < 0.4 AND j.verdict = 'supported'
+ORDER BY j.coverage_score
+LIMIT 20;
+```
+
+## Implementation
+
+`CitationScorer` in [`scripts/eval_harness.py`](../scripts/eval_harness.py). It probes
+the endpoint once at startup, warns and disables itself if unreachable, and never
+fails a run because scoring is unavailable.

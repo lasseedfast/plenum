@@ -99,6 +99,22 @@ frontend/         React + TypeScript + Vite
 deploy/examples/  systemd units and an nginx site, with placeholders
 ```
 
+## Documentation
+
+| | |
+|---|---|
+| [docs/SETUP.md](docs/SETUP.md) | Step-by-step install: database, chat model, embeddings, data |
+| [docs/PORTING.md](docs/PORTING.md) | Adapting to a parliament other than Sweden |
+| [docs/SCHEMA.md](docs/SCHEMA.md) | What every table and column means |
+| [docs/deep-research.md](docs/deep-research.md) | How the background research agent works |
+| [docs/sources-system.md](docs/sources-system.md) | How citations are tracked and verified |
+| [docs/multi-provider.md](docs/multi-provider.md) | Letting users bring their own model API key |
+| [docs/shadow-communicator.md](docs/shadow-communicator.md) | The parallel commentary shown while the model works |
+| [docs/eval-harness.md](docs/eval-harness.md) | Measuring whether answers are actually grounded |
+| [docs/eval-scorer.md](docs/eval-scorer.md) | Optional cross-encoder scoring for citations |
+| [SECURITY.md](SECURITY.md) | Model-authored SQL, API keys, chat privacy |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to work on this |
+
 ## Configuration
 
 All settings are environment variables, documented in `.env.example`. Two paths let a
