@@ -212,7 +212,7 @@ anything else drifts, which turns a merge conflict into a caught mistake.
 ## Security
 
 The `database_query` tool executes model-authored SQL. Give it a database role with
-`SELECT` only — the application does not currently enforce that itself, and corpus
+`SELECT` only – the application does not currently enforce that itself, and corpus
 text reaches the model's context, so treat it as untrusted input. See
 [SECURITY.md](SECURITY.md).
 
@@ -221,12 +221,7 @@ text reaches the model's context, so treat it as untrusted input. See
 AGPL-3.0-or-later. If you run a modified version as a network service, you must offer
 its source to users of that service.
 
-If AGPL does not work for your organisation, ask — I am open to granting other terms
+If AGPL does not work for your organisation, ask – I am open to granting other terms
 for newsrooms and public-interest projects. Contact details are in the repository
 metadata.
 
-## Acknowledgements
-
-Swedish parliamentary data comes from [data.riksdagen.se](https://data.riksdagen.se)
-under the Riksdag's open-data terms. plenum is not affiliated with or endorsed by the
-Swedish Riksdag.
