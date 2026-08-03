@@ -123,10 +123,10 @@ nothing rather than any error.
 ## The rename
 
 The schema was originally Swedish, inherited from the Riksdag-only predecessor.
-[`_postgres/rename_map.py`](../_postgres/rename_map.py) records every old-to-new pair
-and generates both the migration and its rollback, so the two cannot drift apart.
+`_postgres/migrations/20260803_01_rename_to_english.sql` and its ROLLBACK companion
+were generated from a single map, so the two directions cannot disagree.
 
-The migration is guarded by an existence check: a no-op on a database created from
+That migration is guarded by an existence check: a no-op on a database created from
 the current `schema.sql`, and the real thing on one created before the rename — so a
 single file serves both a fresh install and an existing deployment.
 `ALTER TABLE ... RENAME` is catalog-only in PostgreSQL, so no data moves and no index

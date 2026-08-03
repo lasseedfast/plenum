@@ -2,8 +2,8 @@
 
 Search, chat and research over what a parliament actually said.
 
-plenum ingests a parliament's open data — speeches from the chamber, motions and
-other member-submitted documents, and the register of members — into PostgreSQL
+plenum ingests a parliament's open data — for now *speeches* from the chamber, *motions* and
+other member-submitted documents, and the *register of members* — into PostgreSQL
 with full-text and vector indexes, then puts three things on top:
 
 - **Search.** Full-text search with phrase, prefix, boolean and exclusion syntax,
