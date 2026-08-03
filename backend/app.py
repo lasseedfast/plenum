@@ -110,12 +110,15 @@ def _reap_abandoned_jobs() -> None:
 
 @app.get("/api/guide", response_class=PlainTextResponse)
 def get_guide() -> str:
-    """Serve user-guide.md as plain text. Single source of truth for all guide links."""
-    guide_path = os.path.join(os.path.dirname(__file__), "..", "user-guide.md")
-    if not os.path.exists(guide_path):
-        raise HTTPException(status_code=404, detail="Guide not found")
-    with open(guide_path, encoding="utf-8") as f:
-        return f.read()
+    """Serve the user guide as plain text — the single source for all guide links.
+
+    Resolved through CONTENT_DIR, so a deployment can ship its own guide without
+    editing the repository.
+    """
+    guide = PARLIAMENT.read_content("guide_file")
+    if not guide:
+        raise HTTPException(status_code=404, detail="No guide configured")
+    return guide
 
 
 @app.get("/api/meta")

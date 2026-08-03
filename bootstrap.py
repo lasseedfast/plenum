@@ -5,8 +5,8 @@ the repository root is not on ``sys.path`` and relative paths would resolve agai
 whatever directory the caller happened to be in. Importing this module fixes both,
 deriving the root from this file's own location.
 
-The predecessor hardcoded ``/home/lasse/riksdagen`` in 22 files, which is why the
-project could only ever run on one machine.
+The predecessor hardcoded one absolute path in 22 files, which is why it could
+only ever run on a single machine.
 """
 from __future__ import annotations
 

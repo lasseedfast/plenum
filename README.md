@@ -101,10 +101,19 @@ deploy/examples/  systemd units and an nginx site, with placeholders
 All settings are environment variables, documented in `.env.example`. Two paths let a
 deployment keep its own values outside the repository entirely:
 
-- `PARLIAMENT_CONFIG` — path to a `parliament.yaml` elsewhere on disk
-- `PROMPTS_DIR` — path to a prompt tree elsewhere on disk
+- `PARLIAMENT_CONFIG` — a `parliament.yaml` elsewhere on disk
+- `PROMPTS_DIR` — a prompt tree elsewhere on disk
+- `CONTENT_DIR` — site copy (explainer, guide) elsewhere on disk
 
 Set `PROMPTS_RELOAD=1` in development to re-read prompt files on every call.
+
+### Running a fork
+
+If you maintain a deployment as a fork, keep it differing from upstream only in
+files upstream does not have. Everything branded or private is either an env-var
+pointer (the three above), an untracked file (`.env`, `providers.yaml`), or an
+addition under `deploy/prod/`. `make check-fork-divergence` fails the build if
+anything else drifts, which turns a merge conflict into a caught mistake.
 
 ## Security
 

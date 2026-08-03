@@ -174,13 +174,18 @@ embeddings:
 
 # Served to the frontend via GET /api/meta.
 site:
-  title: rixdagen.se
+  # Deployment identity, not country data. Upstream ships neutral values; a
+  # deployment overrides them in its own PARLIAMENT_CONFIG file so its branding
+  # never appears in a diff against upstream.
+  title: plenum
   tagline: "Sök i riksdagens anföranden och motioner"
   # Markdown, so a deployment can rewrite its own copy without touching source.
-  explainer_file: content/sv/explainer.md
-  limit_warning_file: content/sv/limit_warning.md
+  # Paths are relative to CONTENT_DIR (default: ./content).
+  explainer_file: sv/explainer.md
+  limit_warning_file: sv/limit_warning.md
   # Upstream ships these empty. A deployment fills them in via its own
   # PARLIAMENT_CONFIG file, which keeps personal contact details out of the repo.
+  guide_file: sv/user-guide.md
   contact:
     email: null
     url: null

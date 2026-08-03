@@ -97,12 +97,12 @@ via sigmoid so 0.5 = neutral, >0.7 = likely grounded, <0.3 = likely hallucinated
 
 `NULL` means the scorer endpoint was unreachable when the judgment was recorded.
 
-Start the scorer (first run downloads the model to `/home/lasse/models`):
+Start the scorer (first run downloads the model to `$HOME/models`):
 
 ```bash
 nohup vllm serve BAAI/bge-reranker-v2-m3 \
   --port 8001 \
-  --download-dir /home/lasse/models \
+  --download-dir $HOME/models \
   --gpu-memory-utilization 0.2 \
   --max-model-len 8192 \
   --trust-remote-code \

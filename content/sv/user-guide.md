@@ -4,11 +4,11 @@ Den här guiden förklarar hur Riksdagen-appen är byggd, vilka val som gjorts, 
 
 ---
 
-## Om rixdagen.se
+## Om den här sajten
 
-Sajten är utvecklad av [Lasse Edfast](https://lasseedfast.se), hittills utan ekonomiskt stöd. Den är gratis att använda och ingen information sparas utöver de sju dagarna som en chatt sparas i. 
+Sajten drivs utan ekonomiskt stöd. Den är gratis att använda och ingen information sparas utöver de sju dagarna som en chatt sparas i.
 
-Vill du vara med och utveckla, eller bara har frågor, kontakta gärna Lasse via [e-post](mailto:lasse@edfast.se).
+Vill du vara med och utveckla, eller bara har frågor, hör gärna av dig.
 
 ---
 
@@ -207,11 +207,11 @@ En API-nyckel är ett lösenord som identifierar dig mot en AI-leverantörs serv
 - **OpenRouter** – [openrouter.ai](https://openrouter.ai) (aggregator med tillgång till hundratals modeller)
 - **OpenAI** – [platform.openai.com](https://platform.openai.com) (samma modeller som driver ChatGPT)
 
-Användning av externa modeller kostar pengar och debiteras direkt från ditt konto hos leverantören – inte via rixdagen.se.
+Användning av externa modeller kostar pengar och debiteras direkt från ditt konto hos leverantören – inte via den här sajten.
 
 ### Hur nyckeln lagras
 
-Din nyckel sparas **enbart lokalt i din webbläsare** (`localStorage`). Den skickas till rixdagen.se:s server bara för att vidarebefordras till leverantören när ett anrop görs – den loggas inte, sparas inte i databasen och syns aldrig i någon annan användares session.
+Din nyckel sparas **enbart lokalt i din webbläsare** (`localStorage`). Den skickas till sajtens server bara för att vidarebefordras till leverantören när ett anrop görs – den loggas inte, sparas inte i databasen och syns aldrig i någon annan användares session.
 
 Konkret:
 - Nyckeln ligger kvar i webbläsaren tills du rensar den (knappen ✕ i inställningspanelen) eller tömmer webbläsarens lagringsdata.

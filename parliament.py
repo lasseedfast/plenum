@@ -24,6 +24,11 @@ import yaml
 
 _ROOT = Path(__file__).resolve().parent
 
+# Site copy — the explainer, the limit warning, the user guide. Overridable so a
+# deployment's own wording lives outside the repository, the same way PROMPTS_DIR
+# works for prompts.
+CONTENT_DIR = Path(os.environ.get("CONTENT_DIR") or _ROOT / "content")
+
 # A Postgres text-search configuration name. It is interpolated into SQL rather
 # than passed as a parameter (identifiers cannot be bound), so it is validated
 # on load and never trusted from arbitrary input.
@@ -129,7 +134,7 @@ class Parliament:
         rel = self.site.get(key)
         if not rel:
             return ""
-        path = _ROOT / rel
+        path = CONTENT_DIR / rel
         return path.read_text(encoding="utf-8") if path.exists() else ""
 
     # -- serialisation ------------------------------------------------------
