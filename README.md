@@ -32,8 +32,12 @@ country-specific lives in one file.
 | Everything else | country-neutral |
 
 Adapting to another parliament means writing a config file, an ingest adapter, and a
-set of prompts in your language — not editing the application. See
-[docs/PORTING.md](docs/PORTING.md).
+set of prompts in your language — not editing the application.
+
+**Start at [docs/YOUR-PARLIAMENT.md](docs/YOUR-PARLIAMENT.md)**, which covers how to
+organise the work (fork rather than clone, and add files rather than edit them, so
+later updates merge cleanly). Then [docs/PORTING.md](docs/PORTING.md) for what to
+write.
 
 The database schema is country-neutral English: `speeches`, `documents`,
 `document_proposals`, `person_id`, `constituency`. Concepts that have no stable
@@ -53,7 +57,14 @@ while the country's own word lives in `parliament.yaml`. See
 ## Quickstart
 
 Full step-by-step setup, including how to plug in each model provider and how to
-verify each stage worked, is in **[docs/SETUP.md](docs/SETUP.md)**. The short version:
+verify each stage worked, is in **[docs/SETUP.md](docs/SETUP.md)**.
+
+> Planning to run this for your own parliament, or change anything? **Fork the
+> repository first**, then clone your fork — see
+> [docs/YOUR-PARLIAMENT.md](docs/YOUR-PARLIAMENT.md). Cloning directly is fine only if
+> you are reading the code and will not be changing it.
+
+The short version:
 
 ```bash
 git clone https://git.edfast.se/lasse/plenum && cd plenum
@@ -101,19 +112,38 @@ deploy/examples/  systemd units and an nginx site, with placeholders
 
 ## Documentation
 
+**Getting it running**
+
 | | |
 |---|---|
-| [docs/SETUP.md](docs/SETUP.md) | Step-by-step install: database, chat model, embeddings, data |
-| [docs/PORTING.md](docs/PORTING.md) | Adapting to a parliament other than Sweden |
-| [docs/SCHEMA.md](docs/SCHEMA.md) | What every table and column means |
-| [docs/deep-research.md](docs/deep-research.md) | How the background research agent works |
-| [docs/sources-system.md](docs/sources-system.md) | How citations are tracked and verified |
-| [docs/multi-provider.md](docs/multi-provider.md) | Letting users bring their own model API key |
-| [docs/shadow-communicator.md](docs/shadow-communicator.md) | The parallel commentary shown while the model works |
-| [docs/eval-harness.md](docs/eval-harness.md) | Measuring whether answers are actually grounded |
-| [docs/eval-scorer.md](docs/eval-scorer.md) | Optional cross-encoder scoring for citations |
-| [SECURITY.md](SECURITY.md) | Model-authored SQL, API keys, chat privacy |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to work on this |
+| [docs/SETUP.md](docs/SETUP.md) | Install, step by step: PostgreSQL with pgvector, a chat model (vLLM, Ollama, OpenRouter, Berget, OpenAI), an embeddings endpoint, and the first data load. Every step has a command that proves it worked, plus a symptom/cause/fix table. |
+| [docs/YOUR-PARLIAMENT.md](docs/YOUR-PARLIAMENT.md) | **Read this before changing anything.** Fork vs clone, how to add your parliament without creating merge conflicts, how to pull in updates, how to contribute back, and how to undo mistakes. Written for people who do not use git much. |
+| [docs/PORTING.md](docs/PORTING.md) | What a non-Swedish deployment actually has to write: `parliament.yaml`, an ingest adapter, prompts in your language. Honest about which parts are real work. |
+
+**Understanding it**
+
+| | |
+|---|---|
+| [docs/SCHEMA.md](docs/SCHEMA.md) | Every table and column, and why the awkward names are what they are — what your ingest adapter has to produce. |
+| [docs/sources-system.md](docs/sources-system.md) | How a claim in an answer is tied back to the speech it came from. The core of the project's grounding guarantee. |
+| [docs/deep-research.md](docs/deep-research.md) | The background agent: how it proposes threads, digs, and writes a report. |
+| [docs/shadow-communicator.md](docs/shadow-communicator.md) | The running commentary shown while the model works. |
+| [docs/multi-provider.md](docs/multi-provider.md) | Letting each user bring their own model API key, and how that key is kept out of the database. |
+
+**Checking it is honest**
+
+| | |
+|---|---|
+| [docs/eval-harness.md](docs/eval-harness.md) | Measuring whether answers are actually supported by the sources they cite. |
+| [docs/eval-scorer.md](docs/eval-scorer.md) | Optional cross-encoder scoring, for finding answers that are technically defensible but misleading. |
+
+**Operating it**
+
+| | |
+|---|---|
+| [SECURITY.md](SECURITY.md) | Model-authored SQL and why it runs read-only, API-key handling, chat privacy. Read before exposing this publicly. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Conventions, and the one rule: answers must be traceable to sources. |
+| [deploy/examples/](deploy/examples/) | systemd units and an nginx site, with placeholders. |
 
 ## Configuration
 

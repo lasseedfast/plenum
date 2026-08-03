@@ -7,6 +7,12 @@
 # Override the path with PARLIAMENT_CONFIG=/etc/plenum/parliament.yaml so a
 # deployment's own values live outside the repository and never appear in a diff.
 
+# YAML gotcha worth knowing before you copy this file: unquoted `no`, `yes`, `on`,
+# `off`, `y` and `n` are read as booleans, not text. That bites Norway hardest —
+# `country: NO` and `prompt_language: no` both become false. The loader repairs this
+# so nothing crashes, but it cannot recover the original capitalisation, so quote
+# such values: country: "NO", prompt_language: "no", code: "N".
+
 schema_version: 1
 
 parliament:

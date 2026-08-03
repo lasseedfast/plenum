@@ -28,7 +28,15 @@ from typing import Any
 from parliament import PARLIAMENT
 
 _ROOT = Path(__file__).resolve().parent
-PROMPTS_DIR = Path(os.environ.get("PROMPTS_DIR") or _ROOT / "prompts")
+def _resolve_dir(value: str | None, default: Path) -> Path:
+    """A relative PROMPTS_DIR is repo-relative, not cwd-relative."""
+    if not value:
+        return default
+    path = Path(value)
+    return path if path.is_absolute() else (_ROOT / path)
+
+
+PROMPTS_DIR = _resolve_dir(os.environ.get("PROMPTS_DIR"), _ROOT / "prompts")
 
 # {{include:path/to/partial}} — expanded before substitution so a shared block
 # (the schema reference, say) has exactly one source.

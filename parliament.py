@@ -27,7 +27,19 @@ _ROOT = Path(__file__).resolve().parent
 # Site copy — the explainer, the limit warning, the user guide. Overridable so a
 # deployment's own wording lives outside the repository, the same way PROMPTS_DIR
 # works for prompts.
-CONTENT_DIR = Path(os.environ.get("CONTENT_DIR") or _ROOT / "content")
+def _resolve_path(value: Optional[str], default: Path) -> Path:
+    """Resolve a configured path, treating a relative one as repo-relative.
+
+    Without this, `PARLIAMENT_CONFIG=parliament.no.yaml` works when you happen to be
+    standing in the repository and fails everywhere else — including under systemd.
+    """
+    if not value:
+        return default
+    path = Path(value)
+    return path if path.is_absolute() else (_ROOT / path)
+
+
+CONTENT_DIR = _resolve_path(os.environ.get("CONTENT_DIR"), _ROOT / "content")
 
 # A Postgres text-search configuration name. It is interpolated into SQL rather
 # than passed as a parameter (identifiers cannot be bound), so it is validated
@@ -37,6 +49,20 @@ _FTS_CONFIG_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 class ConfigError(ValueError):
     """parliament.yaml is missing, malformed, or internally inconsistent."""
+
+
+def _as_str(value: Any) -> Any:
+    """Undo YAML 1.1's boolean coercion for values that are meant to be text.
+
+    YAML reads `no`, `yes`, `on`, `off`, `y` and `n` as booleans. That silently turns
+    Norway's `country: NO` and `prompt_language: no` into False, and a one-letter party
+    code like `N` into the same. Quoting in the file also works, but nobody remembers
+    to, and the failure is a TypeError deep in a path join rather than anything that
+    names the cause.
+    """
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    return value
 
 
 @dataclass(frozen=True)
@@ -177,7 +203,9 @@ def _require(data: dict, key: str) -> Any:
 
 def load(path: Optional[Path] = None) -> Parliament:
     """Read and validate a parliament configuration."""
-    path = Path(path or os.environ.get("PARLIAMENT_CONFIG") or _ROOT / "parliament.yaml")
+    path = Path(path) if path else _resolve_path(
+        os.environ.get("PARLIAMENT_CONFIG"), _ROOT / "parliament.yaml"
+    )
     if not path.exists():
         raise ConfigError(
             f"No parliament configuration at {path}. Copy parliament.yaml from the "
@@ -186,7 +214,11 @@ def load(path: Optional[Path] = None) -> Parliament:
 
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
-    lang = Language(**_require(data, "language"))
+    lang_raw = dict(_require(data, "language"))
+    for key in ("prompt_language", "locale", "fts_config", "name", "name_en"):
+        if key in lang_raw:
+            lang_raw[key] = _as_str(lang_raw[key])
+    lang = Language(**lang_raw)
     if not _FTS_CONFIG_RE.match(lang.fts_config):
         raise ConfigError(
             f"language.fts_config {lang.fts_config!r} is not a valid Postgres "
@@ -195,7 +227,7 @@ def load(path: Optional[Path] = None) -> Parliament:
             f"SELECT cfgname FROM pg_ts_config;"
         )
 
-    parties = [Party(**p) for p in data.get("parties", [])]
+    parties = [Party(**{**p, "code": _as_str(p.get("code"))}) for p in data.get("parties", [])]
     if not parties:
         raise ConfigError("parliament.yaml declares no parties")
 
@@ -203,8 +235,13 @@ def load(path: Optional[Path] = None) -> Parliament:
     if embeddings.dimension <= 0:
         raise ConfigError("embeddings.dimension must be a positive integer")
 
+    meta = dict(_require(data, "parliament"))
+    for key in ("id", "country", "chamber", "name", "name_en"):
+        if key in meta:
+            meta[key] = _as_str(meta[key])
+
     return Parliament(
-        meta=_require(data, "parliament"),
+        meta=meta,
         language=lang,
         vocabulary=data.get("vocabulary", {}),
         parties=parties,
