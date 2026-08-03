@@ -78,7 +78,27 @@ of `kärnkraft` returns nothing at all.
 Set `PROMPTS_RELOAD=1` while you iterate so you are not restarting the server between
 edits.
 
-## 4. UI language
+## 4. Appearance
+
+The shipped look — warm paper, deep institutional blue, a Garamond serif — was designed
+against riksdagen.se. It is not neutral, and it will look Swedish in Budapest or Sofia
+unless you change it.
+
+Set `theme:` in your config. The keys map to CSS custom properties injected at runtime,
+so the stylesheet itself needs no editing:
+
+```yaml
+theme:
+  paper: "#ffffff"
+  ink: "#1a1a1a"
+  blue: "#8a2b2b"                                  # your primary
+  font_display: "'Source Serif 4', Georgia, serif"
+  font_body: "system-ui, sans-serif"
+```
+
+Party colours come from `parties:` and are already per-deployment.
+
+## 5. UI language
 
 The frontend has no i18n layer yet — Swedish strings are written directly into about
 twenty components. Porting the UI currently means translating those in place. Site

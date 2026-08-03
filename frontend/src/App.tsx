@@ -98,6 +98,11 @@ function SearchView() {
 			root.style.setProperty(`--party-${party.code}`, party.color);
 		}
 		root.style.setProperty("--party-na", meta.data.party_defaults.unknown_color);
+		// Brand tokens, so a deployment can match its own parliament's visual language
+		// without editing the stylesheet. Omitted keys keep the shipped defaults.
+		for (const [token, value] of Object.entries(meta.data.theme ?? {})) {
+			root.style.setProperty(`--${token.replace(/_/g, "-")}`, value);
+		}
 		setPhotoUrlTemplate(meta.data.urls?.person_photo ?? "");
 		if (meta.data.site?.title) document.title = meta.data.site.title;
 	}, [meta.data]);

@@ -116,6 +116,7 @@ deploy/examples/  systemd units and an nginx site, with placeholders
 
 | | |
 |---|---|
+| [docs/ASSISTANT-SETUP.md](docs/ASSISTANT-SETUP.md) | **Setting this up with an AI assistant** — a prompt to start with, and the interview it should run. Probably the fastest way in. |
 | [docs/SETUP.md](docs/SETUP.md) | Install, step by step: PostgreSQL with pgvector, a chat model (vLLM, Ollama, OpenRouter, Berget, OpenAI), an embeddings endpoint, and the first data load. Every step has a command that proves it worked, plus a symptom/cause/fix table. |
 | [docs/YOUR-PARLIAMENT.md](docs/YOUR-PARLIAMENT.md) | **Read this before changing anything.** Fork vs clone, how to add your parliament without creating merge conflicts, how to pull in updates, how to contribute back, and how to undo mistakes. Written for people who do not use git much. |
 | [docs/PORTING.md](docs/PORTING.md) | What a non-Swedish deployment actually has to write: `parliament.yaml`, an ingest adapter, prompts in your language. Honest about which parts are real work. |
@@ -155,6 +156,23 @@ deployment keep its own values outside the repository entirely:
 - `CONTENT_DIR` — site copy (explainer, guide) elsewhere on disk
 
 Set `PROMPTS_RELOAD=1` in development to re-read prompt files on every call.
+
+**Not sure what is missing?**
+
+```bash
+python scripts/doctor.py
+```
+
+Checks Python, the database and its extensions, the text-search configuration, the chat
+model, whether that model can actually call tools, the embedding dimension, and which
+ports are free. Changes nothing.
+
+### Appearance
+
+The shipped design is deliberately Nordic-institutional and was drawn from riksdagen.se
+— it will look Swedish wherever you deploy it. Override the `theme:` block in
+`parliament.yaml` to match your own parliament's visual language; the values are
+injected as CSS custom properties at runtime, so no stylesheet needs editing.
 
 ### Running a fork
 

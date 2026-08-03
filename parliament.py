@@ -110,6 +110,7 @@ class Parliament:
     sources: dict[str, Any]
     embeddings: Embeddings
     site: dict[str, Any]
+    theme: dict[str, str]
     path: Path
 
     # -- lookups ------------------------------------------------------------
@@ -184,6 +185,7 @@ class Parliament:
                 for p in self.parties
             ],
             "party_defaults": self.party_defaults,
+            "theme": self.theme,
             "activity_types": self.activity_types,
             "vocabulary": self.vocabulary,
             "urls": self.urls,
@@ -255,6 +257,7 @@ def load(path: Optional[Path] = None) -> Parliament:
         sources=data.get("sources", {}),
         embeddings=embeddings,
         site=data.get("site", {}),
+        theme=data.get("theme", {}),
         path=path,
     )
 

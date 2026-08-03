@@ -71,6 +71,8 @@ export type MetaResponse = {
 	};
 	parties: Party[];
 	party_defaults: { unknown_color: string; code_pattern: string };
+	/** Brand tokens injected as CSS custom properties; see parliament.yaml `theme:`. */
+	theme?: Record<string, string>;
 	/** Keyed by the value stored in speeches.activity_type. */
 	activity_types: Record<string, DebateType>;
 	vocabulary: Record<string, string>;
