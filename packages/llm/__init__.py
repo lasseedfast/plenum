@@ -17,7 +17,7 @@ to a private server at import time and so could not be run by anyone else.
     llm = LLM(base_url=..., model=..., tools=get_tools())
     reply = llm.generate(messages=[{"role": "user", "content": "..."}])
 """
-from .client import LLM, ChatCompletionMessage
+from .client import LLM, ChatCompletionMessage, StreamAccumulator
 from .config import LLMConfig
 from .tools import (
     TOOL_REGISTRY,
@@ -31,6 +31,7 @@ __all__ = [
     "LLM",
     "LLMConfig",
     "ChatCompletionMessage",
+    "StreamAccumulator",
     "register_tool",
     "get_tools",
     "execute_tool",

@@ -197,6 +197,19 @@ const AnswerText = ({ html }: { html: string }) => {
     );
 };
 
+/**
+ * Renders the live, speculative answer preview while it streams in.
+ * Plain JSX text child — not dangerouslySetInnerHTML — so React's default
+ * escaping is a second line of defense against any citation-marker fragment
+ * the backend filter missed; no markdown is parsed mid-stream (that only
+ * happens once, on the complete answer, via AnswerText above).
+ */
+const StreamingAnswerText = ({ text }: { text: string }) => (
+    <div className="chat-view__answerText chat-view__answerText--streaming" style={{ whiteSpace: "pre-wrap" }}>
+        {text}
+    </div>
+);
+
 const ResearchCardView = ({
     card,
     isActive,
@@ -266,6 +279,11 @@ const ResearchCardView = ({
                 <InsightResultView card={card.result} />
             </div>
         );
+    }
+
+    // Live streaming-answer preview — provisional, growing prose text.
+    if (card.isStreaming) {
+        return <StreamingAnswerText text={card.streamingText ?? ""} />;
     }
 
     // Thinking card — show spinner if active
@@ -403,9 +421,13 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
 
     // ── Helpers for card state machine ──────────────────────────────────────
 
-    /** True if the latest (index 0) card is still "thinking" (no result, no answer). */
+    /** True if the latest (index 0) card is still "thinking" (no result, no answer, not streaming). */
     const latestIsThinking = (cards: ResearchCard[]) =>
-        cards.length > 0 && cards[0].result === undefined && !cards[0].isAnswer;
+        cards.length > 0 && cards[0].result === undefined && !cards[0].isAnswer && !cards[0].isStreaming;
+
+    /** True if the latest (index 0) card is a live, speculative answer preview. */
+    const latestIsStreamingAnswer = (cards: ResearchCard[]) =>
+        cards.length > 0 && !!cards[0].isStreaming;
 
     /** Create a new thinking card and prepend it. */
     const prependCard = (cards: ResearchCard[], message: string): ResearchCard[] =>
@@ -417,6 +439,9 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
      * result card looking like the final answer while the LLM decides its
      * next step. If the current top card is already an empty placeholder
      * (leftover from a prior result), drop it so we don't stack placeholders.
+     * Never drops a live streaming-answer preview, even though it also has an
+     * empty `message` — the shadow communicator runs on its own thread and
+     * its cards can arrive while a later iteration's answer is mid-stream.
      */
     const prependResultCard = (
         cards: ResearchCard[],
@@ -426,6 +451,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
         const base = cards.length > 0
             && cards[0].result === undefined
             && !cards[0].isAnswer
+            && !cards[0].isStreaming
             && !cards[0].message
             ? cards.slice(1)
             : cards;
@@ -546,6 +572,41 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
                         };
                         setResearchCards(prev => prependResultCard(prev, result, ""));
 
+                    } else if (event.type === "answer_delta") {
+                        // Live, speculative preview of the final answer — provisional text,
+                        // superseded by the fully-processed HTML on the terminal "answer" event.
+                        const chunk: string = event.text ?? "";
+                        if (!chunk) continue;
+                        setResearchCards(prev => {
+                            if (latestIsStreamingAnswer(prev)) {
+                                return [
+                                    { ...prev[0], streamingText: (prev[0].streamingText ?? "") + chunk },
+                                    ...prev.slice(1),
+                                ];
+                            }
+                            if (latestIsThinking(prev)) {
+                                return [
+                                    { ...prev[0], isStreaming: true, streamingText: chunk },
+                                    ...prev.slice(1),
+                                ];
+                            }
+                            return [
+                                { id: newCardId(), message: "", isAnswer: false, isStreaming: true, streamingText: chunk },
+                                ...prev,
+                            ];
+                        });
+
+                    } else if (event.type === "answer_delta_retract") {
+                        // The iteration that looked like the final answer turned out to end
+                        // in a tool call after all — revert to a plain (now-empty) thinking
+                        // card. The tool loop's own "status"/"tool_call" event for this same
+                        // iteration follows immediately and will populate its message normally.
+                        setResearchCards(prev =>
+                            latestIsStreamingAnswer(prev)
+                                ? [{ ...prev[0], isStreaming: false, streamingText: undefined, message: "" }, ...prev.slice(1)]
+                                : prev
+                        );
+
                     } else if (event.type === "answer") {
                         return event as ChatResponse;
 
@@ -591,6 +652,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
 
             // Merge the final answer into the card stack:
             // - If there are prior research cards, upgrade the latest thinking card
+            //   (or live streaming-answer preview) to the answer
             //   (or create a new card if the latest already has a result).
             // - If there are no prior cards (direct answer, no tools), leave the
             //   card array empty and render the answer text directly.
@@ -598,9 +660,16 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
             let finalCards: ResearchCard[];
             if (prior.length === 0) {
                 finalCards = [];
-            } else if (latestIsThinking(prior)) {
-                // Upgrade latest thinking card to answer
-                finalCards = [{ ...prior[0], isAnswer: true, answerHtml }, ...prior.slice(1)];
+            } else if (latestIsThinking(prior) || latestIsStreamingAnswer(prior)) {
+                // Upgrade latest thinking/streaming card to the answer. Whatever
+                // speculative text was streamed is discarded in favor of the
+                // authoritative, fully-processed HTML — citation renumbering,
+                // person-link injection, attribution fixes and the language
+                // pass can all still have reworded it since the last delta.
+                finalCards = [
+                    { ...prior[0], isAnswer: true, answerHtml, isStreaming: false, streamingText: undefined },
+                    ...prior.slice(1),
+                ];
             } else {
                 // Latest already has a result → prepend a new answer card
                 finalCards = [{ id: newCardId(), message: "", isAnswer: true, answerHtml }, ...prior];

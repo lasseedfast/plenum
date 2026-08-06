@@ -878,6 +878,23 @@ form[aria-busy="true"] .search-button[disabled] {
     overflow-x: auto;
 }
 
+/* Live, speculative answer preview — plain text while it streams in, before
+   the fully-processed HTML (citations, person links) replaces it. */
+.chat-view__answerText--streaming {
+    opacity: 0.85;
+}
+
+.chat-view__answerText--streaming::after {
+    content: "▍";
+    display: inline-block;
+    margin-left: 1px;
+    animation: chat-stream-cursor-blink 1s step-end infinite;
+}
+
+@keyframes chat-stream-cursor-blink {
+    50% { opacity: 0; }
+}
+
 .chat-view__answerText table {
     width: 100%;
     margin: 1rem 0;
@@ -2791,6 +2808,20 @@ a.rc-insight__footnote:hover {
 	display: flex;
 	align-items: center;
 	padding: 0.25rem 0;
+}
+
+/* Live, speculative answer preview shown while the MP's reply streams in. */
+.mp-chat__typing-preview {
+	flex: 1;
+	min-width: 0;
+	opacity: 0.85;
+}
+
+.mp-chat__typing-preview::after {
+	content: "▍";
+	display: inline-block;
+	margin-left: 1px;
+	animation: chat-stream-cursor-blink 1s step-end infinite;
 }
 
 .mp-chat__error {

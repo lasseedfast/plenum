@@ -227,7 +227,8 @@ export type LiveCard = LiveSearchCard | LiveStatsCard | LiveInsightCard;
 /**
  * One research step shown to the user during (and after) LLM research.
  * Starts as a "thinking" card with just a message, then gets upgraded to
- * a result card (search/stats) or the final answer card.
+ * a result card (search/stats), a live streaming-answer preview, or the
+ * final answer card.
  */
 export type ResearchCard = {
 	id: string;
@@ -235,6 +236,8 @@ export type ResearchCard = {
 	result?: LiveCard;     // upgraded to this when surface_results fires
 	isAnswer: boolean;     // upgraded to true when final answer arrives
 	answerHtml?: string;   // rendered answer HTML (when isAnswer=true)
+	isStreaming?: boolean;   // true while this card is a live, speculative answer preview
+	streamingText?: string;  // accumulated plain-text preview (not markdown-rendered yet)
 };
 
 export type PersonRef = {

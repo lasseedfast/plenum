@@ -30,6 +30,7 @@ from backend.services.provenance import (
     ProvenanceRegistry,
     parse_and_renumber_citations,
 )
+from backend.services.streaming_answer import run_streaming_iteration
 
 ChatMessage = Dict[str, Any]
 ChatSource = Dict[str, Any]
@@ -255,7 +256,7 @@ class MpChatService:
 
         def run() -> None:
             try:
-                result = self._get_chat_response(messages, event_callback=emit)
+                result = self._get_chat_response(messages, event_callback=emit, stream_answer=True)
                 event_queue.put({"type": "answer", **result})
             except Exception as exc:
                 import traceback
@@ -277,6 +278,7 @@ class MpChatService:
         self,
         messages: Sequence[ChatMessage],
         event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        stream_answer: bool = False,
     ) -> ChatResponse:
         name = self.person.get("name") or ""
         first_name = self.person.get("first_name") or name.split()[0] if name else ""
@@ -317,6 +319,7 @@ class MpChatService:
             user_question=enriched_question,
             event_callback=event_callback,
             registry=registry,
+            stream_answer=stream_answer,
         )
 
         answer_text = (
@@ -360,6 +363,7 @@ class MpChatService:
         user_question: str = "",
         event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
         registry: Optional[ProvenanceRegistry] = None,
+        stream_answer: bool = False,
     ) -> Tuple[FinalAnswer, List[ChatMessage]]:
         current_messages: List[ChatMessage] = list(messages)
 
@@ -374,7 +378,12 @@ class MpChatService:
             gen_kwargs = {"messages": current_messages, "think": think_now, "auto_execute_tools": False}
             if getattr(self, "tools", None):
                 gen_kwargs["tools"] = self.tools
-            response: ChatCompletionMessage = self.smart_llm.generate(**gen_kwargs)
+            if stream_answer and event_callback is not None:
+                response: ChatCompletionMessage = run_streaming_iteration(
+                    self.smart_llm, gen_kwargs, event_callback, iteration=i
+                )
+            else:
+                response: ChatCompletionMessage = self.smart_llm.generate(**gen_kwargs)
 
             tool_calls = getattr(response, "tool_calls", None)
 

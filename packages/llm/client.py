@@ -29,6 +29,10 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_message import (
     ChatCompletionMessage as _OpenAIChatCompletionMessage,
 )
+from openai.types.chat.chat_completion_message_tool_call import (
+    ChatCompletionMessageToolCall,
+    Function as ToolCallFunction,
+)
 from pydantic import BaseModel
 
 from .tools import execute_tool, parse_function_call_arguments
@@ -233,7 +237,7 @@ class LLM:
                 request["tools"] = tools_to_use
             if stream:
                 request["stream"] = True
-                return self._read_stream(self.client.chat.completions.create(**request))
+                return StreamAccumulator(self.client.chat.completions.create(**request))
 
             message = self._create(**request).choices[0].message
 
@@ -314,38 +318,150 @@ class LLM:
                 content = json.dumps({"error": str(exc)}, ensure_ascii=False)
             self.messages.append({"role": "tool", "name": name or "unknown", "content": content})
 
-    # -- streaming ------------------------------------------------------------
 
-    def _read_stream(self, response) -> Generator[Tuple[str, str], None, None]:
-        """Yield ``("thinking" | "content", text)`` pairs as they arrive.
+# -- streaming ------------------------------------------------------------
 
-        Reasoning arrives either in ``reasoning_content`` or inline as ``<think>``
-        blocks; both are surfaced as "thinking" so callers can render or drop them.
-        """
-        in_think_block = False
-        for chunk in response:
+
+class StreamAccumulator:
+    """Wraps a raw streaming ``ChatCompletion`` response.
+
+    Iterate it for ``("thinking" | "content" | "tool_call", text)`` events as
+    they arrive — ``text`` is ``None`` for a ``"tool_call"`` event, which just
+    signals that the model has started emitting a tool call (the payload
+    itself is accumulated internally; read it from ``.message`` once the
+    iterator is exhausted). It fires once per stream, on the first tool-call
+    delta seen, which is what a caller speculatively streaming ``content``
+    live needs to know: the instant tool-call deltas start arriving, whatever
+    ``content`` came before was narration, not a final answer.
+
+    Once the iterator is exhausted, ``.message`` returns a reconstructed
+    :class:`ChatCompletionMessage` — the same shape a blocking
+    ``generate()`` call returns (``content``, ``tool_calls``,
+    ``reasoning_content``) — so callers can treat a streamed and a blocking
+    call identically once the stream is done.
+    """
+
+    # Neither <think> nor </think> can be split into more pieces than their
+    # own length, so this is the longest prefix of either tag we might need
+    # to hold back across a chunk boundary while waiting to see the rest.
+    _MAX_TAG_LEN = max(len("<think>"), len("</think>"))
+
+    def __init__(self, response) -> None:
+        self._response = response
+        self._exhausted = False
+        self._content_parts: List[str] = []
+        self._reasoning_parts: List[str] = []
+        self._tool_calls: Dict[int, Dict[str, Any]] = {}
+        self._pending = ""  # carry-over buffer, tag-boundary-safe
+        self._in_think_block = False
+
+    def __iter__(self) -> Generator[Tuple[str, Optional[str]], None, None]:
+        for chunk in self._response:
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
 
             reasoning = getattr(delta, "reasoning_content", None)
             if reasoning:
+                self._reasoning_parts.append(reasoning)
                 yield "thinking", reasoning
 
+            tool_call_deltas = getattr(delta, "tool_calls", None)
+            if tool_call_deltas:
+                is_first_sighting = not self._tool_calls
+                for tc in tool_call_deltas:
+                    self._accumulate_tool_call(tc)
+                if is_first_sighting:
+                    yield "tool_call", None
+
             text = getattr(delta, "content", None)
-            if not text:
-                continue
+            if text:
+                yield from self._feed_content(text)
 
-            if "<think>" in text:
-                in_think_block = True
-                text = text.split("<think>", 1)[0]
-            if "</think>" in text:
-                in_think_block = False
-                text = text.split("</think>", 1)[1]
+        yield from self._flush_pending()
+        self._exhausted = True
 
-            if not text:
+    def _accumulate_tool_call(self, tc) -> None:
+        entry = self._tool_calls.setdefault(tc.index, {"id": None, "name": None, "arguments": ""})
+        if getattr(tc, "id", None):
+            entry["id"] = tc.id
+        fn = getattr(tc, "function", None)
+        if fn is not None:
+            if getattr(fn, "name", None):
+                entry["name"] = fn.name
+            if getattr(fn, "arguments", None):
+                entry["arguments"] += fn.arguments
+
+    def _feed_content(self, text: str) -> Generator[Tuple[str, str], None, None]:
+        self._pending += text
+        while True:
+            piece = self._extract_safe_piece()
+            if piece is None:
+                break
+            kind, safe_text = piece
+            if not safe_text:
                 continue
-            yield ("thinking" if in_think_block else "content"), text
+            (self._reasoning_parts if kind == "thinking" else self._content_parts).append(safe_text)
+            yield kind, safe_text
+
+    def _extract_safe_piece(self) -> Optional[Tuple[str, str]]:
+        """Pull one provably-safe ``(kind, text)`` piece off ``self._pending``.
+
+        Returns ``None`` if what remains might still be a partial ``<think>``/
+        ``</think>`` tag — i.e. there's nothing safe to release yet.
+        """
+        tag = "</think>" if self._in_think_block else "<think>"
+        idx = self._pending.find(tag)
+        if idx != -1:
+            before, after = self._pending[:idx], self._pending[idx + len(tag):]
+            self._pending = after
+            kind = "thinking" if self._in_think_block else "content"
+            self._in_think_block = not self._in_think_block
+            return kind, before
+
+        # No full tag in the buffer yet — release everything except a tail
+        # that could still grow into one on the next chunk.
+        safe_len = len(self._pending) - (self._MAX_TAG_LEN - 1)
+        if safe_len <= 0:
+            return None
+        kind = "thinking" if self._in_think_block else "content"
+        safe_text, self._pending = self._pending[:safe_len], self._pending[safe_len:]
+        return kind, safe_text
+
+    def _flush_pending(self) -> Generator[Tuple[str, str], None, None]:
+        if self._pending:
+            # A still-open think block at EOF means a truncated/malformed
+            # stream — surface the remainder as "thinking" so it can never
+            # leak as prose, and let normal error handling deal with the
+            # truncation itself.
+            kind = "thinking" if self._in_think_block else "content"
+            (self._reasoning_parts if kind == "thinking" else self._content_parts).append(self._pending)
+            yield kind, self._pending
+            self._pending = ""
+
+    @property
+    def message(self) -> ChatCompletionMessage:
+        if not self._exhausted:
+            raise RuntimeError(
+                "StreamAccumulator.message read before the stream was exhausted — "
+                "iterate the accumulator fully first."
+            )
+        content = _strip_think("".join(self._content_parts)) if self._content_parts else None
+        tool_calls = None
+        if self._tool_calls:
+            tool_calls = [
+                ChatCompletionMessageToolCall(
+                    id=entry["id"] or f"call_{index}",
+                    type="function",
+                    function=ToolCallFunction(name=entry["name"] or "", arguments=entry["arguments"]),
+                )
+                for index, entry in sorted(self._tool_calls.items())
+            ]
+        message = ChatCompletionMessage.model_construct(
+            role="assistant", content=content, tool_calls=tool_calls
+        )
+        message.reasoning_content = "".join(self._reasoning_parts) or None
+        return message
 
 
 # -- module helpers -----------------------------------------------------------

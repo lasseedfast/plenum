@@ -236,6 +236,9 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [isPending, setIsPending] = useState(false);
+    // Live, speculative preview of the answer currently streaming in — provisional,
+    // superseded by the fully-processed answerHtml once the "answer" event lands.
+    const [streamingText, setStreamingText] = useState("");
     const [shareToast, setShareToast] = useState<"copying" | "copied" | "error" | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -339,6 +342,7 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
         setMessages(nextMessages);
         setTurns(prev => [...prev, { id: turnId, question: trimmed, status: "pending" }]);
         setIsPending(true);
+        setStreamingText("");
         setInput("");
         if (textareaRef.current) textareaRef.current.style.height = "auto";
 
@@ -383,9 +387,17 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
                     if (!line.startsWith("data: ")) continue;
                     const event = JSON.parse(line.slice(6));
 
-                    if (event.type === "answer") {
+                    if (event.type === "answer_delta") {
+                        const chunk: string = event.text ?? "";
+                        if (chunk) setStreamingText(prev => prev + chunk);
+                    } else if (event.type === "answer_delta_retract") {
+                        // The iteration that looked like the final answer turned out to
+                        // end in a tool call after all — discard the speculative preview.
+                        setStreamingText("");
+                    } else if (event.type === "answer") {
                         const sources: ChatSource[] = event.sources ?? [];
                         const answerHtml = convertMarkdownToHtml(event.answer ?? "", sources);
+                        setStreamingText("");
                         setTurns(prev =>
                             prev.map(t =>
                                 t.id === turnId
@@ -414,6 +426,7 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
         } finally {
             clearTimeout(timeoutId);
             setIsPending(false);
+            setStreamingText("");
         }
     }, [isPending, messages, person.person_id, initialTalkId, providerOverride]);
 
@@ -510,9 +523,17 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
                                         alt=""
                                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                                     />
-                                    <div className="mp-chat__typing">
-                                        <span className="chat-loading__spinner" />
-                                    </div>
+                                    {streamingText ? (
+                                        // Live, speculative preview — plain text, no markdown yet;
+                                        // replaced by the real MpBubble once "answer" arrives.
+                                        <div className="mp-chat__typing-preview" style={{ whiteSpace: "pre-wrap" }}>
+                                            {streamingText}
+                                        </div>
+                                    ) : (
+                                        <div className="mp-chat__typing">
+                                            <span className="chat-loading__spinner" />
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

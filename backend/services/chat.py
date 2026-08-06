@@ -30,6 +30,7 @@ from backend.services.provenance import (
     parse_and_renumber_citations,
     _SRC_PATTERN,
 )
+from backend.services.streaming_answer import run_streaming_iteration
 from backend.services.research_models import (
     ResearchRequest,
     ResearchReport,
@@ -306,6 +307,14 @@ class ChatService:
         Yields dicts with a "type" key:
           {"type": "tool_call", "tool": "<name>"}   – a tool is about to run
           {"type": "status",    "message": "<text>"} – generic progress note
+          {"type": "answer_delta", "text": "<chunk>"} – a live piece of the final
+              answer, streamed speculatively as it's generated. Provisional: the
+              terminal "answer" event's text may still differ (citation
+              renumbering, person-link injection, attribution fixes and the
+              language pass all run once, after the fact, on the complete text).
+          {"type": "answer_delta_retract"} – the iteration that looked like the
+              final answer turned out to end in a tool call after all; discard
+              any "answer_delta" text shown for it.
           {"type": "answer",    "answer": "...", "sources": [...], ...} – final answer
           {"type": "error",     "message": "<text>"} – unhandled exception
         """
@@ -321,7 +330,7 @@ class ChatService:
                 result = self.get_chat_response(
                     messages, top_k=top_k, focus_ids=focus_ids, event_callback=emit,
                     provider_override=provider_override, use_editor=use_editor,
-                    quick=quick, session_id=session_id,
+                    quick=quick, session_id=session_id, stream_answer=True,
                 )
                 event_queue.put({"type": "answer", **result})
             except Exception as exc:
@@ -351,6 +360,7 @@ class ChatService:
         use_editor: bool = False,
         quick: bool = False,
         session_id: Optional[str] = None,
+        stream_answer: bool = False,
     ) -> ChatResponse:
         """
         Public entry point. If the first user message starts with "TEST ",
@@ -358,13 +368,20 @@ class ChatService:
         (messages, events, tool calls/results, final answer, timings, errors)
         is recorded to the Postgres eval_conversations table. Normal
         conversations are never stored.
+
+        stream_answer: when True, the tool loop's final (no-tool-call) answer
+        generation is streamed live as "answer_delta" events via
+        event_callback, instead of arriving as one blocking call. Only
+        stream_chat_response sets this — the plain /api/chat entry point
+        never does, so it is unaffected regardless of event_callback (which
+        eval logging below can make non-None even for non-streaming calls).
         """
         messages, is_eval = detect_and_strip_test_prefix(list(messages))
         if not is_eval:
             return self._get_chat_response_impl(
                 messages, top_k=top_k, focus_ids=focus_ids,
                 event_callback=event_callback, provider_override=provider_override,
-                use_editor=use_editor, quick=quick,
+                use_editor=use_editor, quick=quick, stream_answer=stream_answer,
             )
         recorder = ConversationRecorder(
             session_id=session_id,
@@ -384,7 +401,7 @@ class ChatService:
                 messages, top_k=top_k, focus_ids=focus_ids,
                 event_callback=recorder.wrap(event_callback),
                 provider_override=provider_override, use_editor=use_editor,
-                quick=quick,
+                quick=quick, stream_answer=stream_answer,
             )
         except Exception as exc:
             recorder.finish(error=exc)
@@ -401,6 +418,7 @@ class ChatService:
         provider_override=None,
         use_editor: bool = False,
         quick: bool = False,
+        stream_answer: bool = False,
     ) -> ChatResponse:
         """
         Generate a reply while allowing the assistant to call registered tools.
@@ -514,6 +532,7 @@ class ChatService:
             communicator_llm=communicator_llm,
             supports_thinking=supports_thinking,
             sent_insights=sent_insights,
+            stream_answer=stream_answer,
         )
         answer_text = (
             response_message.final_answer
@@ -1329,6 +1348,7 @@ class ChatService:
         communicator_llm=None,
         supports_thinking: bool = True,
         sent_insights: Optional[List[str]] = None,
+        stream_answer: bool = False,
     ) -> Tuple[FinalAnswer, List[Dict[str, Any]], List[str]]:
         """
         Repeatedly call the smart LLM, executing tool calls as needed, until a
@@ -1336,6 +1356,12 @@ class ChatService:
 
         Long tool results are compressed by the fast model before being appended
         to the message history, keeping the smart model's context lean.
+
+        stream_answer: when True (and event_callback is set), each iteration's
+        generate() call streams instead of blocking, and content that clears
+        AnswerStreamFilter's confidence gate is speculatively forwarded live as
+        "answer_delta" events before we know for certain this iteration has no
+        tool_calls. See backend/services/streaming_answer.py.
         """
         _smart = smart_llm or self.smart_llm
         _fast = fast_llm or self.fast_llm
@@ -1411,7 +1437,12 @@ class ChatService:
             gen_kwargs = {"messages": current_messages, "think": think_now, "auto_execute_tools": False}
             if getattr(self, "tools", None):
                 gen_kwargs["tools"] = self.tools
-            response: ChatCompletionMessage = _smart.generate(**gen_kwargs)
+            if stream_answer and event_callback is not None:
+                response: ChatCompletionMessage = run_streaming_iteration(
+                    _smart, gen_kwargs, event_callback, iteration=i
+                )
+            else:
+                response: ChatCompletionMessage = _smart.generate(**gen_kwargs)
 
             if isinstance(response, str):
                 # _llm swallows API exceptions and returns a plain string error message.

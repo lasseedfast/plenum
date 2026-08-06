@@ -139,7 +139,10 @@ def chat_stream_endpoint(payload: ChatRequest, request: Request) -> StreamingRes
     """
     SSE endpoint: streams tool-call progress events followed by the final answer.
     Each event is a line of the form:  data: <json>\\n\\n
-    Event types: "tool_call", "status", "answer", "error".
+    Event types: "tool_call", "status", "answer_delta", "answer_delta_retract",
+    "answer", "error". "answer_delta" pieces are a provisional, speculative
+    preview of the final answer as it's generated — see
+    backend/services/streaming_answer.py.
     Using streaming avoids Cloudflare's 100-second proxy timeout for long-running queries.
     """
     messages = [msg.model_dump() for msg in payload.messages]
@@ -322,6 +325,8 @@ def mp_chat_stream_endpoint(payload: MpChatRequest) -> StreamingResponse:
     """
     SSE streaming endpoint for chatting with an MP persona.
     The LLM role-plays as the specified person, grounded in their actual speeches.
+    Same event types as /chat/stream, including the "answer_delta"/
+    "answer_delta_retract" live-preview events.
     """
     from backend.services.mp_chat import MpChatService
 
