@@ -77,7 +77,7 @@ export function TalkView() {
 		const idString = typeof rawId === 'object' && rawId !== null && '_id' in rawId 
 			? (rawId as any)._id 
 			: String(rawId);
-		const result = idString.startsWith("speeches/") ? idString.slice(6) : idString;
+		const result = idString.startsWith("speeches/") ? idString.slice("speeches/".length) : idString;
 		return result;
 	};
 	const previousId = normalizeTalkId(previousTalk);

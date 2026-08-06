@@ -162,7 +162,7 @@ export async function fetchTalk(id: string): Promise<any> {
 		headers: getSessionHeaders(),
 	});
 	if (!response.ok) {
-		throw new Error(`Failed to fetch talk: ${response.statusText}`);
+		throw new Error(`Failed to fetch talk: ${response.status}`);
 	}
 	return response.json();
 }

@@ -74,7 +74,7 @@ export function ResultsTable({ results, exportResults, onLoadMore, nextBatchSize
 				<tbody>
 					{results.map((hit) => {
 						// Always use _id, and strip "speeches/" prefix for routing
-						const talkKey = hit._id?.startsWith("speeches/") ? hit._id.slice(6) : hit._id;
+						const talkKey = hit._id?.startsWith("speeches/") ? hit._id.slice("speeches/".length) : hit._id;
 						if (!talkKey) {
 							console.warn("Result hit missing _id:", hit);
 						}

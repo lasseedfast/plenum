@@ -28,7 +28,7 @@ export const convertMarkdownToHtml = (markdown: string, sources?: ChatSource[]):
             if (raw.startsWith("documents/")) {
                 talkPathByIndex.set(i + 1, `/motion/${raw.slice("documents/".length)}`);
             } else {
-                const key = raw.startsWith("speeches/") ? raw.slice(6) : raw;
+                const key = raw.startsWith("speeches/") ? raw.slice("speeches/".length) : raw;
                 if (key) talkPathByIndex.set(i + 1, `/talk/${key}`);
             }
         });
