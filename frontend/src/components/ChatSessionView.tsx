@@ -7,7 +7,7 @@ import { decryptJson, encryptJson } from "../crypto";
 import { useAuth } from "../context/AuthContext";
 import { SearchPanel } from "./SearchPanel";
 import { ChatPanel, type ChatPanelHandle, INITIAL_ASSISTANT_MESSAGE } from "./ChatPanel";
-import { copyToClipboard } from "../utils/clipboard";
+import { copyToClipboardWhenReady } from "../utils/clipboard";
 import type { ChatMessage, ChatTurn, EncSessionPayload, EncTitlePayload } from "../types";
 
 export function ChatSessionView() {
@@ -103,7 +103,10 @@ export function ChatSessionView() {
 		if (!readyTurns.length) return;
 		setShareToast("copying");
 		try {
-			const snapshotId = await createSnapshot({
+			// Not awaited here on purpose — the clipboard write has to start
+			// inside the click's user gesture or Safari refuses it. See
+			// copyToClipboardWhenReady.
+			const pendingUrl = createSnapshot({
 				session_type: "general",
 				llm_messages: chatMessages,
 				turns: readyTurns.map(t => ({
@@ -112,9 +115,8 @@ export function ChatSessionView() {
 					sources: t.sources ?? [],
 				})),
 				focus_ids: focusIds,
-			});
-			const url = `${window.location.origin}/fork/${snapshotId}`;
-			await copyToClipboard(url);
+			}).then(snapshotId => `${window.location.origin}/fork/${snapshotId}`);
+			await copyToClipboardWhenReady(pendingUrl);
 			setShareToast("copied");
 		} catch {
 			setShareToast("error");

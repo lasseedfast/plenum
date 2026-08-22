@@ -7,7 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { useLLMSettings } from "../context/LLMSettingsContext";
 import { convertMarkdownToHtml, getMpPhotoUrl } from "../utils/markdown";
 import { chatAnswerToMarkdown } from "../utils/copyMarkdown";
-import { copyToClipboard } from "../utils/clipboard";
+import { copyToClipboardWhenReady } from "../utils/clipboard";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import { useTalkDrawer } from "../context/TalkDrawerContext";
 
@@ -312,7 +312,10 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
         if (!readyTurns.length) return;
         setShareToast("copying");
         try {
-            const snapshotId = await createSnapshot({
+            // Not awaited here on purpose — the clipboard write has to start
+            // inside the click's user gesture or Safari refuses it. See
+            // copyToClipboardWhenReady.
+            const pendingUrl = createSnapshot({
                 session_type: "mp",
                 person_id: person.person_id,
                 initial_speech_id: initialTalkId,
@@ -322,8 +325,8 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
                     answerHtml: t.answerHtml ?? "",
                     sources: t.sources ?? [],
                 })),
-            });
-            await copyToClipboard(`${window.location.origin}/fork/${snapshotId}`);
+            }).then(snapshotId => `${window.location.origin}/fork/${snapshotId}`);
+            await copyToClipboardWhenReady(pendingUrl);
             setShareToast("copied");
         } catch {
             setShareToast("error");

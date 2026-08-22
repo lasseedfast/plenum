@@ -6,10 +6,51 @@
 /** Plain text only — used for share links. */
 export async function copyToClipboard(text: string): Promise<void> {
 	if (navigator.clipboard?.writeText) {
-		await navigator.clipboard.writeText(text);
-		return;
+		try {
+			await navigator.clipboard.writeText(text);
+			return;
+		} catch {
+			// Present but refusing — no permission, the document lost focus, or
+			// the user gesture has already expired. The legacy path below is
+			// held to a looser standard, so it is still worth a try.
+		}
 	}
 	writeViaCopyEvent(null, text);
+}
+
+/**
+ * Copies a string that does not exist yet at click time — a share link that a
+ * request has to mint first.
+ *
+ * Awaiting that request and then writing is the obvious shape and it fails on
+ * Safari: WebKit only honours a clipboard write while the gesture that asked
+ * for it is still live, and a network round trip outlives that window, so
+ * writeText() rejects with NotAllowedError however fast the server answers.
+ * Handing ClipboardItem the *pending promise* claims the clipboard
+ * synchronously, inside the gesture, and fills it in once the link lands.
+ *
+ * Must therefore be called synchronously from the event handler — an `await`
+ * before this point puts the gesture back out of reach.
+ */
+export async function copyToClipboardWhenReady(pending: Promise<string>): Promise<void> {
+	if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+		try {
+			await navigator.clipboard.write([
+				new ClipboardItem({
+					"text/plain": pending.then(
+						text => new Blob([text], { type: "text/plain" }),
+					),
+				}),
+			]);
+			return;
+		} catch {
+			// Firefox takes only a resolved Blob here, not a promise. Falling
+			// through also covers `pending` itself rejecting: the await below
+			// re-raises that, so a failed request reads as a failed request
+			// rather than as a clipboard problem.
+		}
+	}
+	await copyToClipboard(await pending);
 }
 
 /**
