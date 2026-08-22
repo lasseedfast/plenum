@@ -8,6 +8,7 @@ import { useAuth } from "../context/AuthContext";
 import { SearchPanel } from "./SearchPanel";
 import { ChatPanel, type ChatPanelHandle, INITIAL_ASSISTANT_MESSAGE } from "./ChatPanel";
 import { copyToClipboardWhenReady } from "../utils/clipboard";
+import { hydrateChatTurns } from "../utils/turns";
 import type { ChatMessage, ChatTurn, EncSessionPayload, EncTitlePayload } from "../types";
 
 export function ChatSessionView() {
@@ -53,12 +54,12 @@ export function ChatSessionView() {
 					const payload = await decryptJson<EncSessionPayload>(dek, data.enc_payload);
 					if ((payload.llm_messages ?? []).length > 0) {
 						setChatMessages(payload.llm_messages as ChatMessage[]);
-						setChatTurns((payload.turns as ChatTurn[]) ?? []);
+						setChatTurns(hydrateChatTurns(payload.turns as Partial<ChatTurn>[]));
 						setFocusIds(payload.focus_ids ?? []);
 					}
 				} else if (data.llm_messages.length > 0) {
 					setChatMessages(data.llm_messages as ChatMessage[]);
-					setChatTurns(data.turns as ChatTurn[]);
+					setChatTurns(hydrateChatTurns(data.turns as Partial<ChatTurn>[]));
 					setFocusIds(data.focus_ids);
 				}
 			})

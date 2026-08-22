@@ -8,6 +8,7 @@ import { useLLMSettings } from "../context/LLMSettingsContext";
 import { convertMarkdownToHtml, getMpPhotoUrl } from "../utils/markdown";
 import { chatAnswerToMarkdown } from "../utils/copyMarkdown";
 import { copyToClipboardWhenReady } from "../utils/clipboard";
+import { hydrateMpChatTurns } from "../utils/turns";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import { useTalkDrawer } from "../context/TalkDrawerContext";
 
@@ -263,7 +264,7 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
                 const payload = await decryptJson<EncSessionPayload>(dek, data.enc_payload);
                 if ((payload.turns ?? []).length > 0) {
                     lastSavedTurnsRef.current = JSON.stringify(payload.turns);
-                    setTurns(payload.turns as MpChatTurn[]);
+                    setTurns(hydrateMpChatTurns(payload.turns as Partial<MpChatTurn>[]));
                     setMessages(payload.llm_messages ?? []);
                 }
             })
