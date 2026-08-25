@@ -70,6 +70,8 @@ def main(argv: list[str] | None = None) -> int:
             exit_code = 1
 
     if args.command in ("load", "sync"):
+        # The name search ranks on these; they go stale the moment speeches change.
+        pipeline.refresh_person_stats()
         print("\nNext: python scripts/make_embeddings.py")
     return exit_code
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { mpPath } from "../utils/mpLink";
 import { getMpPhotoUrl } from "../utils/markdown";
 import type { Motion } from "../types";
 
@@ -47,7 +48,7 @@ export function MotionBody({ motion }: { motion: Motion }) {
 				<div className="talk-view__speaker-info">
 					<div className="talk-view__speaker-row">
 						{primary?.person_id ? (
-							<Link to={`/mp/${primary.person_id}`} className="talk-view__speaker-name-link">
+							<Link to={mpPath(primary.person_id, primary.name)} className="talk-view__speaker-name-link">
 								<h1>{primary?.name}</h1>
 							</Link>
 						) : (
@@ -63,7 +64,7 @@ export function MotionBody({ motion }: { motion: Motion }) {
 					</div>
 					{primary?.person_id && (
 						<Link
-							to={`/mp/${primary.person_id}?doc_id=${motion.doc_id}`}
+							to={`${mpPath(primary.person_id, primary.name)}?doc_id=${motion.doc_id}`}
 							className="secondary-button talk-view__chat-btn"
 						>
 							Chatta med {primary?.first_name || primary?.name}
@@ -80,7 +81,7 @@ export function MotionBody({ motion }: { motion: Motion }) {
 					{coSigners.map((a, i) => (
 						<span key={i} className="motion-view__cosigner">
 							{a.person_id ? (
-								<Link to={`/mp/${a.person_id}`}>{a.name}</Link>
+								<Link to={mpPath(a.person_id, a.name)}>{a.name}</Link>
 							) : (
 								a.name
 							)}

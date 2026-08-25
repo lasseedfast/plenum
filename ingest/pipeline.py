@@ -201,6 +201,21 @@ def load(name: str, adapt: Callable[[str, dict], Optional[dict]], limit: Optiona
     return counts
 
 
+def refresh_person_stats() -> None:
+    """Rebuild the per-person speech aggregates the name search ranks on.
+
+    Cheap next to a load, and skipping it leaves newly ingested speeches out of
+    the ranking until something else rebuilds the view. Reported rather than
+    raised: a sync that has already written its rows should not exit non-zero
+    because an optional view is missing.
+    """
+    try:
+        pg.execute_void("REFRESH MATERIALIZED VIEW CONCURRENTLY person_speech_stats")
+        print("  refreshed person_speech_stats")
+    except Exception as exc:
+        print(f"  person_speech_stats not refreshed: {type(exc).__name__}: {exc}")
+
+
 def _target(name: str) -> tuple[str, list[str], str]:
     return {
         "speeches": ("speeches", SPEECH_COLUMNS, "id"),

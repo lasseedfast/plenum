@@ -247,6 +247,10 @@ def get_talk(speech_id: str) -> dict:
     person = None
     if row.get("first_name") or row.get("last_name"):
         person = {
+            # person_id is what makes the speaker's name a link to their profile.
+            # Leaving it out silently degrades the talk page to plain text.
+            "person_id": row.get("person_id"),
+            "name": row.get("speaker_name"),
             "image_url_medium": row.get("image_url_medium"),
             "first_name": row.get("first_name"),
             "last_name": row.get("last_name"),

@@ -6,8 +6,9 @@ import { decryptJson, encryptJson } from "../crypto";
 import { useAuth } from "../context/AuthContext";
 import { useLLMSettings } from "../context/LLMSettingsContext";
 import { convertMarkdownToHtml, getMpPhotoUrl } from "../utils/markdown";
+import { mpPath } from "../utils/mpLink";
 import { chatAnswerToMarkdown } from "../utils/copyMarkdown";
-import { copyToClipboardWhenReady } from "../utils/clipboard";
+import { copyToClipboard, copyToClipboardWhenReady } from "../utils/clipboard";
 import { hydrateMpChatTurns } from "../utils/turns";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import { useTalkDrawer } from "../context/TalkDrawerContext";
@@ -241,6 +242,7 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
     // superseded by the fully-processed answerHtml once the "answer" event lands.
     const [streamingText, setStreamingText] = useState("");
     const [shareToast, setShareToast] = useState<"copying" | "copied" | "error" | null>(null);
+    const [linkToast, setLinkToast] = useState<"copying" | "copied" | "error" | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const lastSavedTurnsRef = useRef<string>("");
@@ -307,6 +309,22 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
             }).catch(() => {});
         }
     }, [turns, isPending, sessionId, person.person_id, person.name, initialTalkId, messages, user, dek]);
+
+    // Copying the address bar used to hand over a chat session id along with the
+    // profile. This copies the profile link and nothing else.
+    const handleCopyProfileLink = async () => {
+        setLinkToast("copying");
+        try {
+            // The link already exists, so no need for the pending-promise dance
+            // that minting a share link requires.
+            await copyToClipboard(`${window.location.origin}${mpPath(person.person_id, person.name)}`);
+            setLinkToast("copied");
+        } catch {
+            setLinkToast("error");
+        } finally {
+            setTimeout(() => setLinkToast(null), 2500);
+        }
+    };
 
     const handleShare = async () => {
         const readyTurns = turns.filter(t => t.status === "ready");
@@ -488,6 +506,19 @@ export function MpChatPanel({ person, initialTalkId, sessionId }: Props) {
                             </>
                         )}
                     </dl>
+                    <div className="mp-profile__actions">
+                        <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={handleCopyProfileLink}
+                            disabled={linkToast === "copying"}
+                        >
+                            {linkToast === "copied" ? "Länk kopierad!" : "Kopiera länk"}
+                        </button>
+                        {linkToast === "error" && (
+                            <span className="mp-profile__actions-error">Kunde inte kopiera länken.</span>
+                        )}
+                    </div>
                 </div>
             </div>
 

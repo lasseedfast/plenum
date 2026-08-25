@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BrowserRouter, Routes, Route, useSearchParams, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Routes, Route, useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query"; // Hooks for data fetching & mutations
 import { fetchMeta, searchTalks, sendFeedback, setSessionId } from "./api";  // API functions
 import type { SearchFilters, TalkHit } from "./types";
 import { setPhotoUrlTemplate } from "./utils/markdown";
+import { mpPath } from "./utils/mpLink";
 import { Link } from "react-router-dom";
 import { SearchPanel } from "./components/SearchPanel";       // Search form & filters
 import { StatsView } from "./components/StatsView";           // Stats visualization
 import { ResultsTable } from "./components/ResultsTable";     // Table of results
+import { PeopleResults } from "./components/PeopleResults";   // Members matching the query
 import { ChatSessionView } from "./components/ChatSessionView";
 import { ChatSnapshotView } from "./components/ChatSnapshotView";
 import { TalkView } from "./components/TalkView";
@@ -65,6 +67,9 @@ function SearchView() {
 	const [speaker, setSpeaker] = useState<string | null>(() => searchParams.get("speakerName"));
 	const [speakerIds, setSpeakerIds] = useState<string[]>(() => parseList(searchParams.get("speakers")));
 	const [results, setResults] = useState<TalkHit[]>([]);
+	// The query the results on screen belong to. Distinct from `query`, which
+	// tracks the input: the member cards belong with the results, not the typing.
+	const [submittedQuery, setSubmittedQuery] = useState(() => searchParams.get("q") ?? "");
 
 	// --- Pagination and sorting ---
 	const [sortMode, setSortMode] = useState<"relevance" | "date">(
@@ -286,6 +291,7 @@ function SearchView() {
 							setSpeaker(null);
 							setSpeakerIds([]);
 						}
+						setSubmittedQuery(cleanQuery);
 						const effectiveSpeakerIds = hasMention ? speakerIds : [];
 						searchMutation.mutate({
 							q: cleanQuery,
@@ -310,14 +316,17 @@ function SearchView() {
 					onResetChat={() => {}}
 				/>
 
-				{/* "Chatta med" shortcut when a single MP is filtered */}
+				{/* Shortcut to the profile when the search is filtered to one member */}
 				{speakerIds.length === 1 && speaker && (
 					<div className="mp-chat-shortcut">
-						<Link to={`/mp/${speakerIds[0]}`} className="secondary-button">
-							Chatta med {speaker}
+						<Link to={mpPath(speakerIds[0], speaker)} className="secondary-button">
+							Öppna profilen för {speaker}
 						</Link>
 					</div>
 				)}
+
+				{/* A name in the search box usually means the person, not the word. */}
+				<PeopleResults query={submittedQuery} />
 
 				{/* Show stats and table when we have hits */}
 				{sortedResults.length > 0 && (
@@ -370,6 +379,12 @@ function SearchView() {
 	);
 }
 
+/** Talk ids were once stored with an "es/" prefix; those links are still out there. */
+function LegacyTalkRedirect() {
+	const { id } = useParams();
+	return <Navigate to={`/talk/${id ?? ""}`} replace />;
+}
+
 function App() {
 	return (
 		<BrowserRouter>
@@ -386,6 +401,7 @@ function App() {
 							<Route path="/chats" element={<MyChatsView />} />
 							<Route path="/share/:uuid" element={<ChatSnapshotView />} />
 							<Route path="/fork/:uuid" element={<ForkRedirectView />} />
+							<Route path="/talk/es/:id" element={<LegacyTalkRedirect />} />
 							<Route path="/talk/:id" element={<TalkView />} />
 							<Route path="/motion/:id" element={<MotionView />} />
 							<Route path="/mp/:id" element={<MpChatView />} />

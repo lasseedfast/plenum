@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { fetchTalk, fetchMotion } from "../api";
+import { mpPath } from "../utils/mpLink";
 import { useTalkDrawer, normalizeTalkId } from "../context/TalkDrawerContext";
 import { MotionBody } from "./MotionBody";
 import type { Motion } from "../types";
@@ -114,7 +115,7 @@ export function TalkDrawer() {
 								<div className="talk-view__speaker-info">
 									<div className="talk-view__speaker-row">
 										{talk.person?.person_id ? (
-											<Link to={`/mp/${talk.person.person_id}`} className="talk-view__speaker-name-link">
+											<Link to={mpPath(talk.person.person_id, talk.speaker_name)} className="talk-view__speaker-name-link">
 												<h1>{talk.speaker_name}</h1>
 											</Link>
 										) : (
@@ -134,7 +135,7 @@ export function TalkDrawer() {
 									</div>
 									{talk.person?.person_id && (
 										<Link
-											to={`/mp/${talk.person.person_id}?speech_id=${openTalkId}`}
+											to={`${mpPath(talk.person.person_id, talk.speaker_name)}?speech_id=${openTalkId}`}
 											className="secondary-button talk-view__chat-btn"
 										>
 											Chatta med {talk.person?.first_name || talk.speaker_name}

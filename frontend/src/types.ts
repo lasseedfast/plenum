@@ -293,6 +293,26 @@ export type PersonDetail = {
 	uppdrag?: Uppdrag[] | null;
 };
 
+/**
+ * One match from /api/suggest. The member autocomplete and the people cards
+ * above search results share it — everything past the name is what makes two
+ * members who share a name tellable apart.
+ */
+export type PersonSuggestion = {
+	person_id: string;
+	/** Repeats person_id; the mention inputs have always read the key by this name. */
+	_key: string;
+	name: string;
+	party?: string | null;
+	constituency?: string | null;
+	status?: string | null;
+	active?: boolean | null;
+	image_url?: string | null;
+	speech_count?: number | null;
+	/** ISO date of the most recent speech; null for a member who never spoke. */
+	last_speech?: string | null;
+};
+
 export type MpChatTurn = {
 	id: string;
 	question: string;

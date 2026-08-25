@@ -56,3 +56,5 @@ frontend/dist/
 
 # NOTE: `*.sql` is deliberately NOT ignored. The predecessor repo ignored it and
 # thereby hid 14 of its 16 database migrations from version control.
+
+local

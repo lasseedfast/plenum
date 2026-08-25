@@ -2488,6 +2488,170 @@ a.rc-insight__footnote:hover {
 	margin: 0 0 0.5rem 0;
 }
 
+.mp-profile__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+	margin-top: 0.25rem;
+}
+
+.mp-profile__actions-error {
+	font-size: var(--fs-12);
+	color: var(--muted);
+}
+
+/* ── Member suggestions and member cards ─────────────────────────────────────
+   The mention dropdown and the "Ledamöter" block above search results show the
+   same row — photo, name, party, then a line of context — so they share their
+   styling and read as the same object in two places. */
+
+.person-suggest__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.person-suggest__item {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	padding: 0.4rem 0.5rem;
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.person-suggest__item[data-active="true"] {
+	background: rgba(0, 0, 0, 0.06);
+}
+
+.person-suggest__avatar {
+	width: 34px;
+	height: 34px;
+	flex: 0 0 34px;
+	border-radius: 50%;
+	object-fit: cover;
+	/* Portrait crops: bias towards the head rather than the middle of the frame. */
+	object-position: 50% 15%;
+	background: var(--surface-2);
+}
+
+.person-suggest__avatar--empty {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: var(--fs-12);
+	font-weight: 600;
+	color: var(--muted);
+}
+
+.person-suggest__text {
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+	min-width: 0;
+}
+
+.person-suggest__name-row {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	min-width: 0;
+}
+
+.person-suggest__name {
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.person-suggest__meta {
+	font-size: var(--fs-12);
+	color: var(--muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.party-chip--sm {
+	min-width: 0;
+	padding: 0.05rem 0.45rem;
+	font-size: var(--fs-12);
+}
+
+.people-results {
+	margin-bottom: var(--space-3);
+}
+
+.people-results__heading {
+	font-size: var(--fs-12);
+	font-weight: 600;
+	letter-spacing: var(--tracking-eyebrow);
+	text-transform: uppercase;
+	color: var(--ink-4);
+	margin: 0 0 0.6rem 0;
+}
+
+.people-results__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+	gap: var(--space-2);
+}
+
+.people-results__card {
+	display: flex;
+	align-items: center;
+	gap: 0.7rem;
+	padding: 0.6rem 0.7rem;
+	border: 1px solid var(--surface-line);
+	border-radius: 6px;
+	background: var(--surface);
+	color: inherit;
+	text-decoration: none;
+	height: 100%;
+}
+
+.people-results__card:hover,
+.people-results__card:focus-visible {
+	background: var(--surface-2);
+}
+
+.people-results__avatar {
+	width: 44px;
+	height: 44px;
+	flex: 0 0 44px;
+}
+
+.people-results__text {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+	min-width: 0;
+}
+
+.people-results__name-row {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	min-width: 0;
+}
+
+.people-results__name {
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.people-results__meta {
+	font-size: var(--fs-12);
+	color: var(--muted);
+}
+
 /* Uppdrag expandable section */
 
 .mp-profile__uppdrag {

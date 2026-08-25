@@ -1,9 +1,12 @@
 // src/components/MentionTextarea.tsx
 import React, { useCallback, useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import type { MentionSuggestion } from "./MentionInput";
+import type { PersonSuggestion } from "../types";
+import { PersonSuggestionList } from "./PersonSuggestionList";
 import { getSessionHeaders } from "../api";
 
-const MIN_POPOVER_WIDTH = 180;
+// Wide enough for a photo, a name, a party chip and a line of constituency.
+const MIN_POPOVER_WIDTH = 320;
 const TOKEN_REGEX = /@([^\s@]+(?:\s+[^\s@]*)*)$/; // Allow multi-word mention tokens.
 
 /** Matches MentionInput helper to keep escaping rules identical. */
@@ -38,7 +41,7 @@ export const MentionTextarea = forwardRef(function MentionTextarea(
     onChange,
     onSubmit,
     fetchUrl = "/api/suggest",
-    minChars = 3,
+    minChars = 2,
     maxSuggestions = 8,
     placeholder,
     className,
@@ -137,7 +140,10 @@ export const MentionTextarea = forwardRef(function MentionTextarea(
             .map((entry) =>
               typeof entry === "string"
                 ? { name: entry }
-                : { name: entry.name ?? entry.name ?? "", _key: entry._key ?? (entry as any)?.key },
+                // Spread first: party, constituency and photo are what the
+                // dropdown shows, and dropping them here is what left it a
+                // list of indistinguishable names.
+                : { ...entry, name: entry.name ?? "", _key: entry._key ?? (entry as any)?.key },
             )
             .filter((entry) => entry.name.length > 0);
           const still = getTokenInfo();
@@ -277,16 +283,6 @@ export const MentionTextarea = forwardRef(function MentionTextarea(
     [open, suggestions, activeIndex, pickSuggestion, onSubmit, value],
   );
 
-  // Click on suggestion
-  const handleSuggestionClick = useCallback(
-    (idx: number) => {
-      const suggestion = suggestions[idx];
-      if (!suggestion) return;
-      pickSuggestion(suggestion);
-    },
-    [pickSuggestion, suggestions],
-  );
-
   const handleChange = useCallback(
     (event: React.ChangeEvent<HTMLTextAreaElement>) => {
       onChange(event.target.value);
@@ -318,7 +314,8 @@ export const MentionTextarea = forwardRef(function MentionTextarea(
       {open && suggestions.length > 0 && (
         <div
           role="listbox"
-          aria-label="Talare"
+          aria-label="Ledamöter"
+          className="person-suggest"
           style={
             anchorRect
               ? {
@@ -336,25 +333,11 @@ export const MentionTextarea = forwardRef(function MentionTextarea(
               : { position: "absolute", zIndex: 9999 }
           }
         >
-          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {suggestions.map((s, i) => (
-              <li
-                key={s._key ?? s.name}
-                role="option"
-                aria-selected={i === activeIndex}
-                onMouseDown={(event) => event.preventDefault()} // Keep textarea focused.
-                onClick={() => handleSuggestionClick(i)}
-                style={{
-                  padding: "8px 10px",
-                  cursor: "pointer",
-                  background: i === activeIndex ? "rgba(0,0,0,0.06)" : undefined,
-                  borderRadius: 4,
-                }}
-              >
-                {s.name}
-              </li>
-            ))}
-          </ul>
+          <PersonSuggestionList
+            suggestions={suggestions as PersonSuggestion[]}
+            activeIndex={activeIndex}
+            onPick={(person) => pickSuggestion(person as MentionSuggestion)}
+          />
         </div>
       )}
     </div>

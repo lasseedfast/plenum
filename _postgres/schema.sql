@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS people (
 
 CREATE INDEX IF NOT EXISTS people_parti_idx ON people (party);
 CREATE INDEX IF NOT EXISTS people_namn_idx  ON people (name);
+-- The name autocomplete matches anywhere in the name, not just its start, so a
+-- surname is findable. Without this that is a sequential scan per keystroke.
+CREATE INDEX IF NOT EXISTS people_name_trgm_idx
+    ON people USING gin (lower(name) gin_trgm_ops);
 
 -- ─────────────────────────────────────────
 -- speeches
@@ -132,6 +136,26 @@ CREATE TRIGGER talks_search_vector_trigger
     ON speeches
     FOR EACH ROW
     EXECUTE FUNCTION talks_search_vector_update();
+
+-- ─────────────────────────────────────────
+-- person_speech_stats  (aggregates the name search ranks on)
+-- ─────────────────────────────────────────
+-- How much a member has spoken, and how recently. Both are needed to order name
+-- matches usefully — "Andersson" should reach the sitting minister before a
+-- backbencher who left in 2002 — and computing them per candidate at query time
+-- costs seconds. Refreshed at the end of every ingest; see ingest/pipeline.py.
+CREATE MATERIALIZED VIEW IF NOT EXISTS person_speech_stats AS
+    SELECT person_id,
+           count(*)::int AS speech_count,
+           max(date)     AS last_speech
+    FROM speeches
+    WHERE person_id IS NOT NULL
+    GROUP BY person_id;
+
+-- Unique index: required for REFRESH ... CONCURRENTLY, which keeps the view
+-- readable while the daily sync rebuilds it.
+CREATE UNIQUE INDEX IF NOT EXISTS person_speech_stats_pkey
+    ON person_speech_stats (person_id);
 
 -- ─────────────────────────────────────────
 -- speech_chunks  (text speech_chunks + vector embeddings)

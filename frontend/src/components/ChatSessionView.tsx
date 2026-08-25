@@ -9,6 +9,7 @@ import { SearchPanel } from "./SearchPanel";
 import { ChatPanel, type ChatPanelHandle, INITIAL_ASSISTANT_MESSAGE } from "./ChatPanel";
 import { copyToClipboardWhenReady } from "../utils/clipboard";
 import { hydrateChatTurns } from "../utils/turns";
+import { mpPath } from "../utils/mpLink";
 import type { ChatMessage, ChatTurn, EncSessionPayload, EncTitlePayload } from "../types";
 
 export function ChatSessionView() {
@@ -193,7 +194,7 @@ export function ChatSessionView() {
 
 				{chatMentionedMp && (
 					<div className="mp-chat-shortcut">
-						<Link to={`/mp/${chatMentionedMp.person_id}`} className="secondary-button">
+						<Link to={mpPath(chatMentionedMp.person_id, chatMentionedMp.name)} className="secondary-button">
 							Chatta med {chatMentionedMp.name}
 						</Link>
 					</div>

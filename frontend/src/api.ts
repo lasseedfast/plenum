@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { MetaResponse, SearchRequest, SearchResponse, ChatRequest, ChatResponse, ChatMessage, ChatReply, PersonDetail, ChatSessionData, SessionUpsertData, SnapshotData, SnapshotTurn, ResearchBoardSummary, ResearchBoardDetail, ResearchEventsResponse, ResearchSpawnExtras, ResearchThread, ResearchLead, AuthResponse, PreloginResponse, MyChatRow } from "./types";
+import type { MetaResponse, SearchRequest, SearchResponse, ChatRequest, ChatResponse, ChatMessage, ChatReply, PersonDetail, PersonSuggestion, ChatSessionData, SessionUpsertData, SnapshotData, SnapshotTurn, ResearchBoardSummary, ResearchBoardDetail, ResearchEventsResponse, ResearchSpawnExtras, ResearchThread, ResearchLead, AuthResponse, PreloginResponse, MyChatRow } from "./types";
 
 const client = axios.create({
 	baseURL: "/api",
@@ -260,6 +260,15 @@ export async function getSnapshot(uuid: string): Promise<SnapshotData | null> {
 export async function fetchPerson(person_id: string): Promise<PersonDetail> {
 	const { data } = await client.get<PersonDetail>(`/person/${encodeURIComponent(person_id)}`);
 	return data;
+}
+
+/**
+ * Ranked members whose name contains `q`, matched anywhere in the name so a
+ * surname on its own finds the person.
+ */
+export async function suggestPeople(q: string, limit = 8): Promise<PersonSuggestion[]> {
+	const { data } = await client.get<PersonSuggestion[]>("/suggest", { params: { q, limit } });
+	return data ?? [];
 }
 
 /* ── Account settings (client-encrypted AI config) ──────────────── */

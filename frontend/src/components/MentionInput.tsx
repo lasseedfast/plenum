@@ -1,11 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import type { PersonSuggestion } from "../types";
+import { PersonSuggestionList } from "./PersonSuggestionList";
+
 // Assuming you have this API helper for fetching suggestions
-// import { getSessionHeaders } from "../api"; 
+// import { getSessionHeaders } from "../api";
 
 // Placeholder for getSessionHeaders if you don't have it defined
-const getSessionHeaders = () => ({}); 
+const getSessionHeaders = () => ({});
 
-export type MentionSuggestion = {
+/**
+ * A picked mention. Only `name` and `_key` are needed to rewrite the input; the
+ * rest is what /api/suggest returns alongside, carried through so the dropdown
+ * can show which member each match actually is.
+ */
+export type MentionSuggestion = Partial<PersonSuggestion> & {
   name: string;
   _key?: string;
 };
@@ -22,7 +30,8 @@ type Props = {
   inputProps?: React.InputHTMLAttributes<HTMLInputElement>;
 };
 
-const MIN_POPOVER_WIDTH = 180;
+// Wide enough for a photo, a name, a party chip and a line of constituency.
+const MIN_POPOVER_WIDTH = 320;
 // Only look for new suggestions: @token
 const TOKEN_REGEX = /@([^\s@]+(?:\s+[^\s@]*)*)$/;
 
@@ -78,7 +87,7 @@ export function MentionInput({
   onChange,
   onPick,
   fetchUrl = "/api/suggest",
-  minChars = 3,
+  minChars = 2,
   maxSuggestions = 8,
   placeholder,
   className,
@@ -160,10 +169,13 @@ export function MentionInput({
             .map((entry) =>
               typeof entry === "string"
                 ? { name: entry }
-                : { name: entry.name ?? entry.name ?? "", _key: entry._key ?? (entry as any)?.key },
+                // Spread first: party, constituency and photo are what the
+                // dropdown shows, and dropping them here is what left it a
+                // list of indistinguishable names.
+                : { ...entry, name: entry.name ?? "", _key: entry._key ?? (entry as any)?.key },
             )
             .filter((entry) => entry.name.length > 0);
-          
+
           const still = getTokenInfo();
           if (!still || still.token !== info.token) return;
           
@@ -327,26 +339,12 @@ export function MentionInput({
 
       {/* 3. The suggestions popover */}
       {open && suggestions.length > 0 && (
-        <div role="listbox" aria-label="Talare" style={popupStyle}>
-          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {suggestions.map((s, i) => (
-              <li
-                key={s._key ?? s.name}
-                role="option"
-                aria-selected={i === activeIndex}
-                onMouseDown={(ev) => ev.preventDefault()}
-                onClick={() => pickSuggestion(s)}
-                style={{
-                  padding: "8px 10px",
-                  cursor: "pointer",
-                  background: i === activeIndex ? "rgba(0,0,0,0.06)" : undefined,
-                  borderRadius: 4,
-                }}
-              >
-                {s.name}
-              </li>
-            ))}
-          </ul>
+        <div role="listbox" aria-label="Ledamöter" className="person-suggest" style={popupStyle}>
+          <PersonSuggestionList
+            suggestions={suggestions as PersonSuggestion[]}
+            activeIndex={activeIndex}
+            onPick={(person) => pickSuggestion(person as MentionSuggestion)}
+          />
         </div>
       )}
     </div>

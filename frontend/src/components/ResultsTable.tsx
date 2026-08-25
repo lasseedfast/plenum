@@ -1,5 +1,6 @@
 import { useNavigate, Link } from "react-router-dom";
 import type { TalkHit } from "../types";
+import { mpPath } from "../utils/mpLink";
 
 type Props = {
 	results: TalkHit[];
@@ -110,7 +111,7 @@ export function ResultsTable({ results, exportResults, onLoadMore, nextBatchSize
 								<td>
 									{hit.person_id ? (
 										<Link
-											to={`/mp/${hit.person_id}`}
+											to={mpPath(hit.person_id, hit.speaker)}
 											className="results-table__speaker-link"
 											onClick={stopPropagation}
 										>

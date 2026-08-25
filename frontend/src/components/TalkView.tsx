@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { fetchTalk } from "../api";
+import { mpPath } from "../utils/mpLink";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 
@@ -144,7 +145,7 @@ export function TalkView() {
 				<div className="talk-view__speaker-info">
 					<div className="talk-view__speaker-row">
 						{talk.person?.person_id ? (
-							<Link to={`/mp/${talk.person.person_id}`} className="talk-view__speaker-name-link">
+							<Link to={mpPath(talk.person.person_id, talk.speaker_name)} className="talk-view__speaker-name-link">
 								<h1>{talk.speaker_name}</h1>
 							</Link>
 						) : (
@@ -170,7 +171,7 @@ export function TalkView() {
 					</div>
 					{talk.person?.person_id && (
 						<Link
-							to={`/mp/${talk.person.person_id}?speech_id=${id}`}
+							to={`${mpPath(talk.person.person_id, talk.speaker_name)}?speech_id=${id}`}
 							className="secondary-button talk-view__chat-btn"
 						>
 							Chatta med {talk.person?.first_name || talk.speaker_name}

@@ -10,7 +10,8 @@ const TalkDrawerContext = createContext<TalkDrawerContextValue | null>(null);
 
 /** Strips the ArangoDB "speeches/" collection prefix so callers can pass either form. */
 export function normalizeTalkId(rawId: string): string {
-	return rawId.startsWith("speeches/") ? rawId.slice("speeches/".length) : rawId;
+	if (rawId.startsWith("speeches/")) return rawId.slice("speeches/".length);
+	return rawId.startsWith("es/") ? rawId.slice("es/".length) : rawId;
 }
 
 export function TalkDrawerProvider({ children }: { children: ReactNode }) {
