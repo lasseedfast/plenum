@@ -109,13 +109,13 @@ CREATE TABLE IF NOT EXISTS speeches (
 CREATE INDEX IF NOT EXISTS speeches_search_idx     ON speeches USING GIN (search_vector);
 
 -- Filtering indexes
-CREATE INDEX IF NOT EXISTS speeches_debate_idx     ON speeches (debate, sequence);
+CREATE INDEX IF NOT EXISTS speeches_debate_idx     ON speeches (debate_id, sequence);
 CREATE INDEX IF NOT EXISTS speeches_party_idx      ON speeches (party);
 CREATE INDEX IF NOT EXISTS speeches_date_idx      ON speeches (date);
 CREATE INDEX IF NOT EXISTS speeches_year_idx       ON speeches (year);
 CREATE INDEX IF NOT EXISTS speeches_person_idx ON speeches (person_id);
 CREATE INDEX IF NOT EXISTS speeches_speaker_idx     ON speeches USING GIN (to_tsvector('simple', coalesce(speaker_name, '')));
-CREATE INDEX IF NOT EXISTS speeches_source_doc_idx      ON speeches (dok_id);
+CREATE INDEX IF NOT EXISTS speeches_source_doc_idx      ON speeches (source_doc_id);
 
 -- Semantic search over per-speech summaries (separate from speech_chunks.embedding,
 -- which indexes the full text passage by passage).
@@ -252,7 +252,7 @@ CREATE TABLE IF NOT EXISTS documents (
 
 CREATE INDEX IF NOT EXISTS documents_search_idx  ON documents USING GIN (search_vector);
 CREATE INDEX IF NOT EXISTS documents_date_idx   ON documents (date);
-CREATE INDEX IF NOT EXISTS documents_session_year_idx    ON documents (year);
+CREATE INDEX IF NOT EXISTS documents_session_year_idx    ON documents (session_year);
 CREATE INDEX IF NOT EXISTS documents_committee_idx   ON documents (committee);
 CREATE INDEX IF NOT EXISTS documents_parties_idx ON documents USING GIN (parties);
 
@@ -294,10 +294,10 @@ CREATE INDEX IF NOT EXISTS document_authors_person_idx ON document_authors (pers
 -- document_chunks  (text speech_chunks + vector embeddings)
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS document_chunks (
-    -- Key: "{dok_id}:{chunk_index}", e.g. "HD02846:0"
+    -- Key: "{doc_id}:{chunk_index}", e.g. "HD02846:0"
     id          TEXT PRIMARY KEY,
 
-    doc_id   TEXT NOT NULL REFERENCES documents(dok_id) ON DELETE CASCADE,
+    doc_id   TEXT NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
     text        TEXT NOT NULL,
     embedding   vector(384)
@@ -323,7 +323,7 @@ CREATE TABLE IF NOT EXISTS document_proposals (
     embedding    vector(384)
 );
 
-CREATE INDEX IF NOT EXISTS document_proposals_doc_idx ON document_proposals (dok_id);
+CREATE INDEX IF NOT EXISTS document_proposals_doc_idx ON document_proposals (doc_id);
 CREATE INDEX IF NOT EXISTS document_proposals_embedding_idx ON document_proposals
     USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
