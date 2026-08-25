@@ -188,21 +188,12 @@ class ChatService:
             temperature=0.1,
             base_url=llm_url,
         )
-        # Language-polish fallback chain: Gemini Flash → Berget → vLLM.
+        # Language-polish fallback chain: Berget → vLLM.
         # Built at startup; _language_pass iterates until one model returns a valid response.
-        _gemini_key = os.getenv("GOOGLE_GEMINI_KEY")
         _berget_key = os.getenv("BERGET_API_KEY")
         _berget_url = os.getenv("BERGET_BASE_URL", "https://api.berget.ai/v1")
         _berget_model = os.getenv("BERGET_MODEL") or SMART_MODEL
         self.language_llm_chain: list = []
-        if _gemini_key:
-            self.language_llm_chain.append(LLM(
-                model="gemini-3-flash-preview",
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-                api_key=_gemini_key,
-                system_message=LANGUAGE_CHECKER_SYSTEM,
-                temperature=0.1,
-            ))
         if _berget_key:
             self.language_llm_chain.append(LLM(
                 model=_berget_model,
