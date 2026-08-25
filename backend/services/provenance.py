@@ -9,9 +9,8 @@ renumbers them to [1], [2], and generates the "Källor" section deterministicall
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
-
+from dataclasses import dataclass
+from typing import Any
 
 BODY_CAP_CHARS = 3000
 
@@ -43,8 +42,8 @@ class ProvenanceRegistry:
     """
 
     def __init__(self) -> None:
-        self._sources: Dict[str, SourceRecord] = {}
-        self._order: List[str] = []  # insertion order
+        self._sources: dict[str, SourceRecord] = {}
+        self._order: list[str] = []  # insertion order
 
     def register(self, record: SourceRecord) -> str:
         """Register a source. Deduplicates by source_id, keeps best snippet/body."""
@@ -79,19 +78,19 @@ class ProvenanceRegistry:
             self._order.append(sid)
         return sid
 
-    def get(self, source_id: str) -> Optional[SourceRecord]:
+    def get(self, source_id: str) -> SourceRecord | None:
         return self._sources.get(source_id)
 
     def size(self) -> int:
         return len(self._sources)
 
-    def all_sources(self) -> List[SourceRecord]:
+    def all_sources(self) -> list[SourceRecord]:
         """Return all sources in registration order."""
         return [self._sources[sid] for sid in self._order if sid in self._sources]
 
-    def get_persons(self) -> Dict[str, Dict]:
+    def get_persons(self) -> dict[str, dict]:
         """Return {person_id: {name, party}} for person link injection."""
-        persons: Dict[str, Dict] = {}
+        persons: dict[str, dict] = {}
         for src in self._sources.values():
             if src.person_id and src.speaker and src.person_id not in persons:
                 persons[src.person_id] = {
@@ -100,7 +99,7 @@ class ProvenanceRegistry:
                 }
         return persons
 
-    def to_cited_sources(self, cited_ids: List[str]) -> List[Dict[str, Any]]:
+    def to_cited_sources(self, cited_ids: list[str]) -> list[dict[str, Any]]:
         """Convert a list of cited source IDs to ChatSource dicts for the frontend."""
         result = []
         for sid in cited_ids:
@@ -142,7 +141,7 @@ def parse_and_renumber_citations(
     answer_text: str,
     registry: ProvenanceRegistry,
     max_fallback: int = 5,
-) -> Tuple[str, List[Dict[str, Any]], List[str], List[str]]:
+) -> tuple[str, list[dict[str, Any]], list[str], list[str]]:
     """
     Parse [src:ID] tags from the model's answer, validate against the registry,
     replace with [1], [2], and generate a "Källor" section.
@@ -153,8 +152,8 @@ def parse_and_renumber_citations(
 
     # Deduplicate preserving first-appearance order, validate against registry
     seen: set[str] = set()
-    unique_cited_ids: List[str] = []
-    invalid_ids: List[str] = []
+    unique_cited_ids: list[str] = []
+    invalid_ids: list[str] = []
 
     for cid in cited_ids_raw:
         if cid in seen:
@@ -191,6 +190,13 @@ def parse_and_renumber_citations(
     # Build cited sources from registry
     if unique_cited_ids:
         cited_sources = registry.to_cited_sources(unique_cited_ids)
+    elif not cited_ids_raw:
+        # The model wrote no [src:...] tags at all (as opposed to citing unknown
+        # IDs) — fall back to surfacing what it actually saw, capped at
+        # max_fallback, so the UI still shows provenance for an uncited answer.
+        # These are never renumbered into the body text itself, just listed.
+        fallback_ids = [s.source_id for s in registry.all_sources()[:max_fallback]]
+        cited_sources = registry.to_cited_sources(fallback_ids)
     else:
         cited_sources = []
 
@@ -200,7 +206,10 @@ def parse_and_renumber_citations(
         for i, src in enumerate(cited_sources, 1):
             speaker = src.get("speaker") or "Okänd"
             src_date = src.get("date") or ""
+            heading = src.get("heading") or ""
             line = f"[{i}] {speaker} – {src_date}"
+            if heading:
+                line += f" – {heading}"
             kallor_lines.append(line)
         validated_answer += "\n\n### Källor\n\n" + "\n\n".join(kallor_lines)
 
