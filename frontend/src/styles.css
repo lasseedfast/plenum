@@ -3208,12 +3208,20 @@ a.rc-insight__footnote:hover {
 	text-decoration: none;
 	color: inherit;
 }
-.talk-view__speaker-name-link:hover h1 {
-	color: var(--accent);
-	text-decoration: underline;
-}
+/* A resting underline, faint enough not to shout from a heading. With the
+   hover state alone the name reads as plain text, so only mouse users ever
+   discover that it leads anywhere. */
 .talk-view__speaker-name-link h1 {
-	transition: color 0.15s;
+	text-decoration: underline;
+	text-decoration-thickness: 1px;
+	text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
+	text-underline-offset: 0.18em;
+	transition: color 0.15s, text-decoration-color 0.15s;
+}
+.talk-view__speaker-name-link:hover h1,
+.talk-view__speaker-name-link:focus-visible h1 {
+	color: var(--accent);
+	text-decoration-color: currentColor;
 }
 
 /* "Chatta med" shortcut shown when an MP is filtered in the search panel */
