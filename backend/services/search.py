@@ -13,11 +13,11 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Iterable, Sequence
 
-from postgres_client import pg
 from parliament import PARLIAMENT
+from postgres_client import pg
 
 # Postgres text-search configuration. Validated against ^[a-z_][a-z0-9_]*$ when
 # parliament.yaml loads, so interpolating it into SQL is safe — a config name is

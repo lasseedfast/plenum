@@ -1,6 +1,9 @@
 import os
 import sys
 
+import bootstrap
+
+
 def set_working_directory():
     """Set the working directory to project root."""
     os.chdir(str(bootstrap.PROJECT_ROOT))

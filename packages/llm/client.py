@@ -21,16 +21,18 @@ import json
 import os
 import re
 import traceback
-from typing import Any, Dict, Generator, List, Optional, Tuple, Type
+from collections.abc import Generator
+from typing import Any
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
-from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_message import (
     ChatCompletionMessage as _OpenAIChatCompletionMessage,
 )
 from openai.types.chat.chat_completion_message_tool_call import (
     ChatCompletionMessageToolCall,
+)
+from openai.types.chat.chat_completion_message_tool_call import (
     Function as ToolCallFunction,
 )
 from pydantic import BaseModel
@@ -84,19 +86,19 @@ class LLM:
         self,
         system_message: str = "You are an assistant.",
         temperature: float = 0.01,
-        model: Optional[str] = None,
+        model: str | None = None,
         max_length_answer: int = 3000,
-        messages: Optional[List[dict]] = None,
+        messages: list[dict] | None = None,
         chat: bool = True,
-        tools: Optional[list] = None,
+        tools: list | None = None,
         think: bool = False,
         timeout: int = 240,
         silent: bool = False,
         presence_penalty: float = 0.3,
         top_p: float = 0.9,
-        extra_body: Optional[Dict[str, Any]] = None,
-        base_url: Optional[str] = None,
-        api_key: Optional[str] = None,
+        extra_body: dict[str, Any] | None = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
         max_retries: int = 4,
     ) -> None:
         self.model = model or os.getenv("LLM_MODEL", "smart")
@@ -140,7 +142,7 @@ class LLM:
         """A caller-supplied key means a hosted provider, not our own vLLM."""
         return bool(self._api_key)
 
-    def _build_extra_body(self, think: Optional[bool]) -> Optional[dict]:
+    def _build_extra_body(self, think: bool | None) -> dict | None:
         body = dict(self.extra_body or {})
 
         effective_think = self.think if think is None else think
@@ -155,8 +157,8 @@ class LLM:
 
         return body or None
 
-    def _sampling_kwargs(self, model: str, temperature: Optional[float],
-                         max_tokens: Optional[int]) -> dict:
+    def _sampling_kwargs(self, model: str, temperature: float | None,
+                         max_tokens: int | None) -> dict:
         temp = self.options["temperature"] if temperature is None else temperature
         limit = max_tokens or self.max_length_answer
 
@@ -184,17 +186,17 @@ class LLM:
 
     def generate(
         self,
-        query: Optional[str] = None,
+        query: str | None = None,
         *,
-        messages: Optional[List[dict]] = None,
-        tools: Optional[list] = None,
-        model: Optional[str] = None,
-        temperature: Optional[float] = None,
-        format: Optional[Type[BaseModel]] = None,
+        messages: list[dict] | None = None,
+        tools: list | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        format: type[BaseModel] | None = None,
         stream: bool = False,
-        think: Optional[bool] = None,
-        max_tokens: Optional[int] = None,
-        extra_body: Optional[Dict[str, Any]] = None,
+        think: bool | None = None,
+        max_tokens: int | None = None,
+        extra_body: dict[str, Any] | None = None,
         auto_execute_tools: bool = True,
     ):
         """Run one completion.
@@ -262,10 +264,10 @@ class LLM:
     def _generate_structured(
         self,
         model: str,
-        format: Type[BaseModel],
-        temperature: Optional[float],
-        max_tokens: Optional[int],
-        think: Optional[bool],
+        format: type[BaseModel],
+        temperature: float | None,
+        max_tokens: int | None,
+        think: bool | None,
     ) -> ChatCompletionMessage:
         # vLLM's json_schema mode rejects `role: tool` turns, so fold them into
         # user turns. Done on a copy — the caller's history stays intact.
@@ -349,13 +351,13 @@ class StreamAccumulator:
     def __init__(self, response) -> None:
         self._response = response
         self._exhausted = False
-        self._content_parts: List[str] = []
-        self._reasoning_parts: List[str] = []
-        self._tool_calls: Dict[int, Dict[str, Any]] = {}
+        self._content_parts: list[str] = []
+        self._reasoning_parts: list[str] = []
+        self._tool_calls: dict[int, dict[str, Any]] = {}
         self._pending = ""  # carry-over buffer, tag-boundary-safe
         self._in_think_block = False
 
-    def __iter__(self) -> Generator[Tuple[str, Optional[str]], None, None]:
+    def __iter__(self) -> Generator[tuple[str, str | None], None, None]:
         for chunk in self._response:
             if not chunk.choices:
                 continue
@@ -392,7 +394,7 @@ class StreamAccumulator:
             if getattr(fn, "arguments", None):
                 entry["arguments"] += fn.arguments
 
-    def _feed_content(self, text: str) -> Generator[Tuple[str, str], None, None]:
+    def _feed_content(self, text: str) -> Generator[tuple[str, str], None, None]:
         self._pending += text
         while True:
             piece = self._extract_safe_piece()
@@ -404,7 +406,7 @@ class StreamAccumulator:
             (self._reasoning_parts if kind == "thinking" else self._content_parts).append(safe_text)
             yield kind, safe_text
 
-    def _extract_safe_piece(self) -> Optional[Tuple[str, str]]:
+    def _extract_safe_piece(self) -> tuple[str, str] | None:
         """Pull one provably-safe ``(kind, text)`` piece off ``self._pending``.
 
         Returns ``None`` if what remains might still be a partial ``<think>``/
@@ -428,7 +430,7 @@ class StreamAccumulator:
         safe_text, self._pending = self._pending[:safe_len], self._pending[safe_len:]
         return kind, safe_text
 
-    def _flush_pending(self) -> Generator[Tuple[str, str], None, None]:
+    def _flush_pending(self) -> Generator[tuple[str, str], None, None]:
         if self._pending:
             # A still-open think block at EOF means a truncated/malformed
             # stream — surface the remainder as "thinking" so it can never
@@ -476,7 +478,7 @@ def _extract_json(text: str) -> str:
     return match.group(0) if match else text
 
 
-def _swap_token_param(kwargs: dict, exc: Exception) -> Optional[dict]:
+def _swap_token_param(kwargs: dict, exc: Exception) -> dict | None:
     """Retry payload with the other token-limit field, if that's what was rejected.
 
     Providers disagree about `max_tokens` vs `max_completion_tokens`, and the model

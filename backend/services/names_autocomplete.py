@@ -6,7 +6,7 @@ members apart, so every match carries party, constituency, photo and how much
 the person has spoken.
 """
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 from fastapi import APIRouter
 from psycopg2 import errors as pg_errors
@@ -74,11 +74,11 @@ _WITHOUT_STATS = {
 }
 
 
-def _rows(query: str, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _rows(query: str, params: dict[str, Any]) -> list[dict[str, Any]]:
     return [dict(row) for row in pg.execute(query, params)]
 
 
-def search_people(q: str, limit: int = 8) -> List[Dict[str, Any]]:
+def search_people(q: str, limit: int = 8) -> list[dict[str, Any]]:
     """Rank members whose name contains `q`, best match first.
 
     Matching anywhere in the name is the point: anchoring at the first character
@@ -109,7 +109,7 @@ def search_people(q: str, limit: int = 8) -> List[Dict[str, Any]]:
 
 
 @router.get("/suggest")
-def suggest(q: str, limit: int = 8) -> List[Dict[str, Any]]:
+def suggest(q: str, limit: int = 8) -> list[dict[str, Any]]:
     """Name suggestions for the @mention autocomplete and the people cards.
 
     Args:

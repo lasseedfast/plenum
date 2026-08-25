@@ -23,11 +23,12 @@ import inspect
 import json
 import re
 import types
-from typing import Any, Callable, Dict, Iterable, List, Optional, Union, get_args, get_origin
+from collections.abc import Callable, Iterable
+from typing import Any, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
-TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {}
+TOOL_REGISTRY: dict[str, dict[str, Any]] = {}
 
 _NoneType = type(None)
 
@@ -54,7 +55,7 @@ def _pytype_to_jsonschema(annotation: Any) -> dict:
     annotation, _ = _unwrap_optional(annotation)
 
     origin = get_origin(annotation)
-    if origin in (list, List):
+    if origin in (list, list):
         args = get_args(annotation)
         return {"type": "array", "items": _pytype_to_jsonschema(args[0] if args else str)}
 
@@ -78,7 +79,7 @@ _SECTION_HEADINGS = frozenset(
 _PARAM_RE = re.compile(r"^(\w+)\s*(?:\(([^)]+)\))?\s*:\s*(.*)$")
 
 
-def _parse_google_docstring(docstring: Optional[str]) -> dict:
+def _parse_google_docstring(docstring: str | None) -> dict:
     """Split a Google-style docstring into a description and per-parameter docs.
 
     Everything outside the ``Args:`` block becomes the description, so ``Returns:``
@@ -108,7 +109,7 @@ def _parse_google_docstring(docstring: Optional[str]) -> dict:
     desc_parts = [lines[i].strip() for i in range(args_start) if lines[i].strip()]
     desc_parts += [lines[i].strip() for i in range(args_end, len(lines)) if lines[i].strip()]
 
-    params: Dict[str, dict] = {}
+    params: dict[str, dict] = {}
     i = args_start + 1
     while i < args_end:
         line = lines[i].strip()
@@ -149,11 +150,11 @@ def _openai_function_schema(name: str, description: str, parameters: dict) -> di
 
 
 def register_tool(
-    func: Optional[Callable] = None,
+    func: Callable | None = None,
     *,
-    name: Optional[str] = None,
-    description: Optional[str] = None,
-    schema: Optional[dict] = None,
+    name: str | None = None,
+    description: str | None = None,
+    schema: dict | None = None,
     aliases: Iterable[str] = (),
 ):
     """Register a function as an LLM-callable tool.
@@ -205,9 +206,9 @@ def register_tool(
 
 
 def get_tools(
-    specific_tools: Optional[List[str]] = None,
-    exclude_tools: Optional[List[str]] = None,
-) -> List[dict]:
+    specific_tools: list[str] | None = None,
+    exclude_tools: list[str] | None = None,
+) -> list[dict]:
     """Return the OpenAI-format tool list to advertise to a model.
 
     Hidden aliases are never advertised — they exist only so replayed tool calls
@@ -278,7 +279,7 @@ def execute_tool(name: str, args: dict) -> Any:
             param.annotation if param.annotation is not inspect.Parameter.empty else None
         )
         # Models frequently send a comma-separated string where a list is declared.
-        if get_origin(ann) in (list, List) or ann is list:
+        if get_origin(ann) in (list, list) or ann is list:
             if isinstance(val, str):
                 val = [x.strip() for x in val.split(",") if x.strip()]
         kwargs[pname] = val

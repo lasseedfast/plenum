@@ -14,9 +14,10 @@ import threading
 import time
 import traceback as _tb
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 _MIGRATION = Path(__file__).resolve().parents[2] / "_postgres/migrations/add_eval_conversations.sql"
 
@@ -29,7 +30,7 @@ _table_ready = False
 _ready_lock = threading.Lock()
 
 
-def detect_and_strip_test_prefix(messages: list) -> Tuple[list, bool]:
+def detect_and_strip_test_prefix(messages: list) -> tuple[list, bool]:
     """Return (messages, is_eval), inspecting only the FIRST user message.
 
     On match, returns a new list where the first user message dict is a copy
@@ -52,7 +53,7 @@ def detect_and_strip_test_prefix(messages: list) -> Tuple[list, bool]:
         return messages, False
 
 
-def sanitize_provider(provider_override) -> Optional[Dict[str, Any]]:
+def sanitize_provider(provider_override) -> dict[str, Any] | None:
     """Whitelist provider metadata. api_key is ephemeral and NEVER stored."""
     if provider_override is None:
         return None
@@ -116,9 +117,9 @@ class ConversationRecorder:
 
     def __init__(
         self,
-        session_id: Optional[str],
+        session_id: str | None,
         messages: list,
-        request_meta: Dict[str, Any],
+        request_meta: dict[str, Any],
         stream: bool = False,
     ):
         self.session_id = session_id or f"anon-{uuid.uuid4().hex[:12]}"
@@ -128,24 +129,24 @@ class ConversationRecorder:
         self.turn_index = sum(1 for m in messages if m.get("role") == "user")
         self.started_at = datetime.now(timezone.utc)
         self._t0 = time.monotonic()
-        self._events: List[Dict[str, Any]] = []
+        self._events: list[dict[str, Any]] = []
         self._lock = threading.Lock()
         self._iter = 0
         self._finished = False
 
     def wrap(
-        self, downstream: Optional[Callable[[Dict[str, Any]], None]]
-    ) -> Callable[[Dict[str, Any]], None]:
+        self, downstream: Callable[[dict[str, Any]], None] | None
+    ) -> Callable[[dict[str, Any]], None]:
         """Record every event, forwarding non-eval-only events downstream."""
 
-        def callback(event: Dict[str, Any]) -> None:
+        def callback(event: dict[str, Any]) -> None:
             self.record(event)
             if downstream is not None and not event.get("_eval_only"):
                 downstream(event)
 
         return callback
 
-    def record(self, event: Dict[str, Any]) -> None:
+    def record(self, event: dict[str, Any]) -> None:
         try:
             with self._lock:
                 if self._finished or len(self._events) >= _MAX_EVENTS:
@@ -164,8 +165,8 @@ class ConversationRecorder:
 
     def finish(
         self,
-        result: Optional[dict] = None,
-        error: Optional[BaseException] = None,
+        result: dict | None = None,
+        error: BaseException | None = None,
     ) -> None:
         try:
             with self._lock:

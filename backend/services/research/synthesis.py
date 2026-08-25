@@ -12,7 +12,8 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Iterable, List, Optional
+from collections.abc import Iterable
+
 from prompts_loader import load_prompt
 
 log = logging.getLogger("riksdagen.research.synthesis")
@@ -37,8 +38,8 @@ def ground_citations(text: str, allowed_ids: Iterable[str]) -> str:
     return CITE_RE.sub(_sub, text)
 
 
-def _finding_lines(findings: List[dict]) -> List[str]:
-    lines: List[str] = []
+def _finding_lines(findings: list[dict]) -> list[str]:
+    lines: list[str] = []
     for f in findings:
         who = f.get("speaker") or ""
         if f.get("party"):
@@ -53,7 +54,7 @@ def _finding_lines(findings: List[dict]) -> List[str]:
 
 
 def _generate_markdown(smart_llm, system: str, prompt: str, max_tokens: int,
-                       what: str) -> Optional[str]:
+                       what: str) -> str | None:
     try:
         res = smart_llm.generate(
             messages=[
@@ -74,13 +75,13 @@ def _generate_markdown(smart_llm, system: str, prompt: str, max_tokens: int,
     return content or None
 
 
-def synthesize_thread_answer(smart_llm, thread: dict) -> Optional[str]:
+def synthesize_thread_answer(smart_llm, thread: dict) -> str | None:
     """Detailed markdown answer to one thread's question, grounded in its
     findings. None when there is nothing to write or the LLM call failed."""
     findings = list(thread.get("findings") or [])
     if not findings:
         return None
-    lines: List[str] = [
+    lines: list[str] = [
         f"TRÅD: {thread.get('title') or ''}",
         f"FRÅGA: {thread.get('question') or ''}",
     ]
@@ -103,13 +104,13 @@ def synthesize_thread_answer(smart_llm, thread: dict) -> Optional[str]:
     return ground_citations(answer, (f.get("source_id") for f in findings))
 
 
-def synthesize_report(smart_llm, board: dict, threads: List[dict]) -> Optional[str]:
+def synthesize_report(smart_llm, board: dict, threads: list[dict]) -> str | None:
     """One coherent markdown report for the whole board, woven from the thread
     answers (findings digest as fallback for threads without one)."""
-    sections: List[str] = [f"ÄMNE: {board.get('topic') or ''}"]
+    sections: list[str] = [f"ÄMNE: {board.get('topic') or ''}"]
     if board.get("intro"):
         sections.append(f"INTRO: {board['intro']}")
-    allowed_ids: List[str] = []
+    allowed_ids: list[str] = []
     substance = False
     for t in threads:
         findings = list(t.get("findings") or [])

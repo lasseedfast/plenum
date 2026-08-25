@@ -8,8 +8,8 @@ from __future__ import annotations
 import io
 import json
 import zipfile
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Callable, Iterator, Optional
 
 import requests
 
@@ -37,7 +37,7 @@ def dest_dir(name: str) -> Path:
     return DATA_DIR / source_config(name).get("dest_dir", name)
 
 
-def fetch(name: str, ranges: Optional[list[str]] = None) -> list[Path]:
+def fetch(name: str, ranges: list[str] | None = None) -> list[Path]:
     """Download a source's bulk archives and unpack them under DATA_DIR.
 
     Archives already unpacked are skipped, so this is safe to re-run and cheap to
@@ -99,8 +99,7 @@ def read_records(name: str) -> Iterator[dict]:
             continue
         # A people listing is one file holding many records.
         if isinstance(payload, dict) and "personlista" in payload:
-            for person in payload["personlista"].get("person", []):
-                yield person
+            yield from payload["personlista"].get("person", [])
         else:
             yield payload
 
@@ -160,7 +159,7 @@ def _json_columns(rows: list[dict], columns: Iterator[str]) -> None:
                 row[col] = json.dumps(row[col], ensure_ascii=False)
 
 
-def load(name: str, adapt: Callable[[str, dict], Optional[dict]], limit: Optional[int] = None) -> dict:
+def load(name: str, adapt: Callable[[str, dict], dict | None], limit: int | None = None) -> dict:
     """Adapt every record on disk for a source and upsert it."""
     counts = {"read": 0, "written": 0, "skipped": 0}
     buf: list[dict] = []

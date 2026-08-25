@@ -19,19 +19,22 @@ import subprocess
 import sys
 import time
 import traceback
-
-import requests
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+import requests
 
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402  — after sys.path setup above
+
 load_dotenv()
 
-import types as _types
+import types as _types  # noqa: E402
+
+
 # Stub the backend package before importing submodules so that
 # backend/__init__.py (which imports the full FastAPI app) never runs.
 # __path__ must be set so Python treats the stubs as packages.
@@ -45,10 +48,13 @@ def _stub_pkg(name: str, path: str) -> None:
 _stub_pkg("backend", str(_ROOT / "backend"))
 _stub_pkg("backend.services", str(_ROOT / "backend/services"))
 
-from postgres_client import pg
-from packages.llm import LLM
-from backend.services.chat import ChatService, SMART_MODEL, FAST_MODEL
-
+from backend.services.chat import (  # noqa: E402  — after stubbing above
+    FAST_MODEL,
+    SMART_MODEL,
+    ChatService,
+)
+from packages.llm import LLM  # noqa: E402
+from postgres_client import pg  # noqa: E402
 
 GENERATOR_SYSTEM = """Du genererar realistiska frågor som en svensk journalist eller medborgare kan ställa till ett chatgränssnitt över riksdagens anföranden (~450 000 anföranden från 1990 till idag, med speaker_name, party, date, debatt och fulltext).
 
@@ -95,7 +101,7 @@ Verdict (välj EXAKT ett):
 # Question generator
 # ---------------------------------------------------------------------------
 
-def _fetch_random_talk_snippet() -> Optional[Dict[str, Any]]:
+def _fetch_random_talk_snippet() -> dict[str, Any] | None:
     """Pick a random talk and return its first ~500 chars plus metadata."""
     rows = pg.execute(
         """SELECT id, speaker_name, party, date::text AS date,
@@ -120,7 +126,7 @@ class QuestionGenerator:
 
     def __init__(self, llm: LLM, history_size: int = 20) -> None:
         self.llm = llm
-        self.recent: List[str] = []
+        self.recent: list[str] = []
         self.history_size = history_size
 
     def _prompt_free(self, complexity: int) -> str:
@@ -131,7 +137,7 @@ class QuestionGenerator:
             "Skriv en ny fråga."
         )
 
-    def _prompt_talk_seed(self, talk: Dict[str, Any], complexity: int) -> str:
+    def _prompt_talk_seed(self, talk: dict[str, Any], complexity: int) -> str:
         avoid = "\n".join(f"- {q}" for q in self.recent[-self.history_size:]) or "(inga tidigare)"
         return (
             f"Komplexitetsmål: {complexity}\n\n"
@@ -150,7 +156,7 @@ class QuestionGenerator:
         """Returns (question, complexity) where complexity is 1–3."""
         complexity = random.randint(1, 3)
         strategy = random.choice(self.STRATEGIES)
-        prompt: Optional[str] = None
+        prompt: str | None = None
         if strategy == "talk_seed":
             talk = _fetch_random_talk_snippet()
             if talk:
@@ -180,12 +186,12 @@ class QuestionGenerator:
 
 class TraceCollector:
     def __init__(self) -> None:
-        self.events: List[Dict[str, Any]] = []
+        self.events: list[dict[str, Any]] = []
         self._iter = 0
 
-    def callback(self, event: Dict[str, Any]) -> None:
+    def callback(self, event: dict[str, Any]) -> None:
         etype = event.get("type")
-        compact: Dict[str, Any] = {"iter": self._iter, "type": etype}
+        compact: dict[str, Any] = {"iter": self._iter, "type": etype}
         if etype == "tool_call":
             self._iter += 1
             compact["iter"] = self._iter
@@ -219,8 +225,8 @@ _SPEAKER_RE = re.compile(r"\[([^\]]+)\]\(/mp/[^)]+\)\s*\(([A-ZÅÄÖ]{1,3})\)")
 
 
 def _check_speaker_metadata(
-    paragraph: str, cited_sources: List[Dict[str, Any]]
-) -> Optional[str]:
+    paragraph: str, cited_sources: list[dict[str, Any]]
+) -> str | None:
     """Deterministic check: returns a mismatch description if any speaker/party in the
     paragraph doesn't match the cited source metadata, else None.
 
@@ -255,7 +261,7 @@ def _check_speaker_metadata(
     return None
 
 
-def _split_paragraphs(answer_md: str) -> List[str]:
+def _split_paragraphs(answer_md: str) -> list[str]:
     """Split answer into blocks, returning only those that contain [N] citations.
 
     Splits on double newlines (paragraph breaks). Bullet lists and numbered lists
@@ -274,7 +280,7 @@ def _split_paragraphs(answer_md: str) -> List[str]:
     return [c for c in speech_chunks if _CITATION_RE.search(c)]
 
 
-def _parse_judge_json(text: str) -> Optional[Dict[str, Any]]:
+def _parse_judge_json(text: str) -> dict[str, Any] | None:
     """Extract the first valid JSON object from a judge response.
 
     Rejects objects with an empty rationale — the judge is required to explain every verdict.
@@ -293,7 +299,7 @@ def _parse_judge_json(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _fetch_full_talks(talk_ids: List[str]) -> Dict[str, str]:
+def _fetch_full_talks(talk_ids: list[str]) -> dict[str, str]:
     """Return {speech_id -> talk metadata + full text} for the given ids."""
     if not talk_ids:
         return {}
@@ -336,7 +342,7 @@ class CitationScorer:
     def __init__(self, endpoint: str = _SCORER_ENDPOINT, timeout: int = 10) -> None:
         self.endpoint = endpoint
         self.timeout = timeout
-        self._available: Optional[bool] = None
+        self._available: bool | None = None
 
     def _check_available(self) -> bool:
         if self._available is None:
@@ -351,7 +357,7 @@ class CitationScorer:
                 print(f"[scorer] endpoint {self.endpoint} not reachable — coverage_score will be NULL")
         return self._available
 
-    def score_all(self, paragraph: str, combined_sources: str) -> Optional[float]:
+    def score_all(self, paragraph: str, combined_sources: str) -> float | None:
         """Score the paragraph against all cited sources concatenated into one string.
 
         The combined_sources string is trimmed to _SCORER_COMBINED_MAX_CHARS before
@@ -380,7 +386,7 @@ class CitationScorer:
 
 
 class Judge:
-    def __init__(self, llm: LLM, model_name: str, scorer: Optional["CitationScorer"] = None) -> None:
+    def __init__(self, llm: LLM, model_name: str, scorer: CitationScorer | None = None) -> None:
         self.llm = llm
         self.model_name = model_name
         self.scorer = scorer
@@ -390,8 +396,8 @@ class Judge:
         answer_md: str,
         paragraph: str,
         para_idx: int,
-        cited_sources: List[Dict[str, Any]],
-    ) -> Optional[Dict[str, Any]]:
+        cited_sources: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
         """One LLM call for one paragraph. Returns the verdict dict or None on failure.
 
         Runs a deterministic speaker-metadata check first; if it fires the result is stored
@@ -406,7 +412,7 @@ class Judge:
         full_texts = _fetch_full_talks(talk_ids)
 
         source_block = ""
-        combined_for_scorer_parts: List[str] = []
+        combined_for_scorer_parts: list[str] = []
         for s in cited_sources:
             n = s.get("n", "?")
             tid = (s.get("speech_id") or s.get("_id") or "").split("/")[-1]
@@ -438,7 +444,7 @@ class Judge:
         # text is capped at _SCORER_COMBINED_MAX_CHARS to stay within the 8 192-
         # token model limit (paragraph text is passed as text_2, so it doesn't
         # count toward this budget).
-        coverage_score: Optional[float] = None
+        coverage_score: float | None = None
         if self.scorer and combined_for_scorer_parts:
             combined_sources = "\n\n".join(combined_for_scorer_parts)
             coverage_score = self.scorer.score_all(paragraph, combined_sources)
@@ -479,14 +485,14 @@ class Judge:
             "coverage_score": coverage_score,
         }
 
-    def verdict(self, answer_md: str, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def verdict(self, answer_md: str, sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Judge each cited paragraph individually. One LLM call per paragraph."""
         paragraphs = _split_paragraphs(answer_md)
         if not paragraphs:
             return []
 
         # Build a lookup: citation number → source dict
-        source_by_n: Dict[int, Dict[str, Any]] = {s["n"]: s for s in sources if "n" in s}
+        source_by_n: dict[int, dict[str, Any]] = {s["n"]: s for s in sources if "n" in s}
 
         out = []
         for para_idx, paragraph in enumerate(paragraphs):
@@ -524,7 +530,7 @@ def ensure_migration() -> None:
     pg.execute_void(sql)
 
 
-def create_run(label: str, config: Dict[str, Any]) -> str:
+def create_run(label: str, config: dict[str, Any]) -> str:
     row = pg.execute(
         "INSERT INTO eval_runs (label, config) VALUES (%s, %s) RETURNING id",
         (label, json.dumps(config, default=str)),
@@ -542,14 +548,14 @@ def finalize_run(run_id: str, num_questions: int) -> None:
 def insert_question(
     run_id: str,
     question: str,
-    qtype: Optional[str],
+    qtype: str | None,
     complexity: int,
-    answer: Optional[str],
-    tool_trace: List[Dict[str, Any]],
-    sources: List[Dict[str, Any]],
+    answer: str | None,
+    tool_trace: list[dict[str, Any]],
+    sources: list[dict[str, Any]],
     num_iterations: int,
     duration_ms: int,
-    error: Optional[str],
+    error: str | None,
 ) -> str:
     row = pg.execute(
         """INSERT INTO eval_questions
@@ -573,7 +579,7 @@ def insert_question(
 
 
 def insert_judgments(
-    question_id: str, judgments: List[Dict[str, Any]], judge_model: str
+    question_id: str, judgments: list[dict[str, Any]], judge_model: str
 ) -> None:
     for j in judgments:
         pg.execute_void(
@@ -599,7 +605,7 @@ def insert_judgments(
 # Compact source extraction
 # ---------------------------------------------------------------------------
 
-def compact_sources(sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def compact_sources(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {
             "n": i + 1,
@@ -619,7 +625,7 @@ def compact_sources(sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 # Main loop
 # ---------------------------------------------------------------------------
 
-def backfill_scores(scorer: CitationScorer, run_id: Optional[str] = None) -> None:
+def backfill_scores(scorer: CitationScorer, run_id: str | None = None) -> None:
     """Populate coverage_score for all eval_judgments rows where it is NULL.
 
     Fetches question sources from the DB, re-downloads full talk texts, and calls
@@ -654,7 +660,7 @@ def backfill_scores(scorer: CitationScorer, run_id: Optional[str] = None) -> Non
         talk_ids = [s.get("speech_id") or s.get("_id") for s in cited_sources if s.get("speech_id") or s.get("_id")]
         full_texts = _fetch_full_talks(talk_ids)
 
-        parts: List[str] = []
+        parts: list[str] = []
         for s in cited_sources:
             idx = s.get("n", "?")
             tid = (s.get("speech_id") or s.get("_id") or "").split("/")[-1]
@@ -680,7 +686,7 @@ def backfill_scores(scorer: CitationScorer, run_id: Optional[str] = None) -> Non
     print(f"[backfill] complete — {len(rows)} rows processed")
 
 
-def rejudge_run(run_id: str, judge: "Judge", judge_model: str, only_missing: bool = True) -> None:
+def rejudge_run(run_id: str, judge: Judge, judge_model: str, only_missing: bool = True) -> None:
     """Re-run the judge on all answered questions in a run.
 
     Args:
@@ -716,9 +722,9 @@ def rejudge_run(run_id: str, judge: "Judge", judge_model: str, only_missing: boo
 def replay_run(
     src_run_id: str,
     label: str,
-    judge: "Judge",
+    judge: Judge,
     judge_model: str,
-    chat: "ChatService",
+    chat: ChatService,
     use_editor: bool = False,
     sleep_ms: int = 0,
     max_consecutive_errors: int = 10,
@@ -767,8 +773,8 @@ def replay_run(
         trace = TraceCollector()
         t0 = time.time()
         answer = None
-        sources_compact: List[Dict[str, Any]] = []
-        err_msg: Optional[str] = None
+        sources_compact: list[dict[str, Any]] = []
+        err_msg: str | None = None
         try:
             result = chat.get_chat_response(
                 messages=[{"role": "user", "content": question}],
@@ -951,8 +957,8 @@ def main() -> None:
             trace = TraceCollector()
             t0 = time.time()
             answer = None
-            sources_compact: List[Dict[str, Any]] = []
-            err_msg: Optional[str] = None
+            sources_compact: list[dict[str, Any]] = []
+            err_msg: str | None = None
             try:
                 result = chat.get_chat_response(
                     messages=[{"role": "user", "content": question}],

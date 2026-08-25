@@ -15,8 +15,6 @@ Multi-turn strategy: The speech is sent once and cached by vLLM. Three
 subsequent turns ask for summary, arguments, and tags separately, reusing
 the KV cache of all previous turns.
 """
-from pathlib import Path
-
 import difflib
 import json
 import logging
@@ -26,17 +24,16 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List
-from packages.colorprinter import print_red, print_green
+from pathlib import Path
+
 
 def log(msg):
     print(msg, flush=True)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
+from dotenv import load_dotenv  # noqa: E402  — after sys.path setup above
 
-from pydantic import BaseModel, Field
-from dotenv import load_dotenv
+import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
 
 load_dotenv()
 
@@ -55,8 +52,8 @@ logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("openai").setLevel(logging.WARNING)
 
-from packages.llm import LLM
-from postgres_client import pg
+from packages.llm import LLM  # noqa: E402
+from postgres_client import pg  # noqa: E402
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tags

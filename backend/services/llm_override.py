@@ -14,13 +14,10 @@ copy is the one the browser encrypts under the user's own key (see
 """
 from __future__ import annotations
 
-from typing import Tuple
-
 from pydantic import BaseModel, Field
 
-from packages.llm import LLM
-
 from backend.services.provider_registry import ResolvedProvider, get_provider, get_server_api_key
+from packages.llm import LLM
 
 
 class ProviderOverride(BaseModel):
@@ -52,7 +49,7 @@ def _field(override, name: str) -> str:
     return getattr(override, name, "") or ""
 
 
-def build_research_llms(override) -> Tuple[LLM, LLM]:
+def build_research_llms(override) -> tuple[LLM, LLM]:
     """Build the (smart, fast) pair a research job runs on from an override.
 
     Mirrors the model tiering and temperatures of ``_build_llms_from_env`` in

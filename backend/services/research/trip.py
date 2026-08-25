@@ -16,10 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Callable, Dict, List, Optional
-
-from packages.llm import get_tools
-from packages.llm.tools import TOOL_REGISTRY
+from collections.abc import Callable
 
 from backend.services.llm_tools import (
     HitsResponse,
@@ -29,6 +26,8 @@ from backend.services.llm_tools import (
 )
 from backend.services.provenance import normalize_talk_id
 from backend.services.research.models import ResearchLead, ThreadResearch
+from packages.llm import get_tools
+from packages.llm.tools import TOOL_REGISTRY
 from prompts_loader import load_prompt
 
 log = logging.getLogger("riksdagen.research.trip")
@@ -68,8 +67,8 @@ def _compact_result_string(structured, raw_result) -> str:
     return text
 
 
-def _collect_seen(structured, seen_talks: Dict[str, dict], seen_debates: Dict[str, str],
-                  seen_persons: Dict[str, str]) -> None:
+def _collect_seen(structured, seen_talks: dict[str, dict], seen_debates: dict[str, str],
+                  seen_persons: dict[str, str]) -> None:
     """Harvest ids + attribution from a structured tool result into the seen-maps."""
     hits = []
     if isinstance(structured, SearchHitsResult):
@@ -96,8 +95,8 @@ def _collect_seen(structured, seen_talks: Dict[str, dict], seen_debates: Dict[st
             seen_persons[str(iid)] = h.speaker
 
 
-def _ground(res: ThreadResearch, seen_talks: Dict[str, dict],
-            seen_debates: Dict[str, str], seen_persons: Dict[str, str]) -> ThreadResearch:
+def _ground(res: ThreadResearch, seen_talks: dict[str, dict],
+            seen_debates: dict[str, str], seen_persons: dict[str, str]) -> ThreadResearch:
     """Deterministic backstop: drop unseen sources/targets, enrich the rest."""
     findings = []
     for f in res.findings:
@@ -111,22 +110,22 @@ def _ground(res: ThreadResearch, seen_talks: Dict[str, dict],
         f.party = info.get("party")
         f.date = info.get("date")
         findings.append(f)
-    leads: List[ResearchLead] = []
-    for l in res.leads:
-        target = (l.target or "").strip()
+    leads: list[ResearchLead] = []
+    for lead in res.leads:
+        target = (lead.target or "").strip()
         if not target:
             continue
-        if l.kind == "person":
+        if lead.kind == "person":
             if target not in seen_persons:
                 log.info("trip: dropped person lead with unseen target=%r", target)
                 continue
-            l.label = seen_persons[target]
-        elif l.kind == "debate":
+            lead.label = seen_persons[target]
+        elif lead.kind == "debate":
             if target not in seen_debates:
                 log.info("trip: dropped debate lead with unseen target=%r", target)
                 continue
-            l.label = seen_debates.get(target)
-        leads.append(l)
+            lead.label = seen_debates.get(target)
+        leads.append(lead)
     return ThreadResearch(findings=findings, open_questions=res.open_questions, leads=leads)
 
 
@@ -136,10 +135,10 @@ def research_trip(
     *,
     title: str,
     question: str,
-    hints: Optional[List[str]] = None,
-    known_labels: Optional[List[str]] = None,
+    hints: list[str] | None = None,
+    known_labels: list[str] | None = None,
     max_turns: int = RESEARCH_TRIP_MAX_TURNS,
-    on_event: Optional[Callable[[dict], None]] = None,
+    on_event: Callable[[dict], None] | None = None,
 ) -> ThreadResearch:
     """Run one bounded research trip and return distilled, grounded notes.
 
@@ -166,22 +165,22 @@ def research_trip(
     if known_labels:
         lines.append(
             "Du har redan hittat dessa bitar — leta efter NYTT, inte upprepningar:\n"
-            + "\n".join(f"- {l}" for l in known_labels[:12])
+            + "\n".join(f"- {label}" for label in known_labels[:12])
         )
     lines.append(
         "Gräv nu med verktygen. Börja brett (sök) och gå sedan på djupet med "
         "fetch_debate/read_documents_for. Samla uppslag — dra inga slutsatser."
     )
-    messages: List[dict] = [
+    messages: list[dict] = [
         {"role": "system", "content": _TRIP_SYSTEM},
         {"role": "user", "content": "\n".join(lines)},
     ]
     schemas = get_tools(specific_tools=RESEARCH_TOOLS)
 
-    seen_talks: Dict[str, dict] = {}
-    seen_debates: Dict[str, str] = {}
-    seen_persons: Dict[str, str] = {}
-    executed: Dict[tuple, str] = {}
+    seen_talks: dict[str, dict] = {}
+    seen_debates: dict[str, str] = {}
+    seen_persons: dict[str, str] = {}
+    executed: dict[tuple, str] = {}
 
     for turn in range(max_turns):
         try:

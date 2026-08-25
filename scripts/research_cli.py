@@ -66,9 +66,9 @@ def _print_board(board: dict, threads: list[dict]) -> None:
                 print(f"      ? {q}")
         if t.get("leads"):
             print("    Spår:")
-            for l in t["leads"]:
-                label = f" ({l['label']})" if l.get("label") else ""
-                print(f"      → [{l.get('kind')}] {l.get('target')}{label}: {l.get('lead')}")
+            for lead in t["leads"]:
+                label = f" ({lead['label']})" if lead.get("label") else ""
+                print(f"      → [{lead.get('kind')}] {lead.get('target')}{label}: {lead.get('lead')}")
     if board.get("report"):
         print("-" * 78)
         print("  RAPPORT:")

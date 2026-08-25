@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 import re
 from datetime import date
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from string import Template
 from typing import Any
@@ -107,7 +107,7 @@ def base_context() -> dict[str, Any]:
     }
 
 
-@lru_cache(maxsize=None)
+@cache
 def _load_cached(name: str) -> str:
     return _expand_includes(_resolve(name).read_text(encoding="utf-8"))
 

@@ -18,16 +18,17 @@ import json
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(_ROOT / "scripts"))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402  — after sys.path setup above
+
 load_dotenv()
 
-from postgres_client import pg
+from postgres_client import pg  # noqa: E402
 
 # Thresholds for flagging a turn as problematic
 MAX_ITERATIONS = 20          # ChatService.max_tool_iterations
@@ -35,7 +36,7 @@ ITERATION_WARN = 10
 DURATION_WARN_S = 120
 
 
-def _fetch(since: str | None) -> List[Dict[str, Any]]:
+def _fetch(since: str | None) -> list[dict[str, Any]]:
     where = "WHERE started_at >= %s" if since else ""
     rows = pg.execute(
         f"SELECT id, session_id, turn_index, doc FROM eval_conversations {where} ORDER BY started_at ASC",
@@ -44,7 +45,7 @@ def _fetch(since: str | None) -> List[Dict[str, Any]]:
     return rows
 
 
-def analyze_turn(doc: Dict[str, Any]) -> Dict[str, Any]:
+def analyze_turn(doc: dict[str, Any]) -> dict[str, Any]:
     """Compute per-turn metrics and problem flags from a logged doc."""
     events = doc.get("events") or []
     tool_calls = [e for e in events if e.get("type") == "tool_call"]
@@ -102,7 +103,7 @@ def analyze_turn(doc: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def cmd_summary(rows: List[Dict[str, Any]]) -> None:
+def cmd_summary(rows: list[dict[str, Any]]) -> None:
     if not rows:
         print("No logged conversations.")
         return
@@ -125,7 +126,7 @@ def cmd_summary(rows: List[Dict[str, Any]]) -> None:
         )
 
 
-def cmd_problems(rows: List[Dict[str, Any]]) -> None:
+def cmd_problems(rows: list[dict[str, Any]]) -> None:
     found = False
     for r in rows:
         m = analyze_turn(r["doc"])
@@ -142,9 +143,9 @@ def cmd_problems(rows: List[Dict[str, Any]]) -> None:
         print("No problem flags found.")
 
 
-def cmd_tools(rows: List[Dict[str, Any]]) -> None:
+def cmd_tools(rows: list[dict[str, Any]]) -> None:
     calls: Counter = Counter()
-    durations: Dict[str, List[float]] = {}
+    durations: dict[str, list[float]] = {}
     for r in rows:
         events = r["doc"].get("events") or []
         for i, e in enumerate(events):

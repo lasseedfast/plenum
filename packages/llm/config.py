@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, replace
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -40,7 +39,7 @@ class LLMConfig:
     max_retries: int = 4
 
     @classmethod
-    def from_env(cls) -> "LLMConfig":
+    def from_env(cls) -> LLMConfig:
         """Build the server's default endpoint from environment variables."""
         base_url = os.getenv("LLM_DIRECT_URL", "")
         if not base_url:
@@ -57,11 +56,11 @@ class LLMConfig:
     def with_override(
         self,
         *,
-        base_url: Optional[str] = None,
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-    ) -> "LLMConfig":
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+    ) -> LLMConfig:
         """Return a copy pointed at a different provider, for a single request."""
         changes = {
             k: v

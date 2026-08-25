@@ -12,9 +12,6 @@ import json
 import logging
 import os
 import re
-from typing import List, Optional
-
-from postgres_client import pg
 
 from backend.services import crypto_blob
 from backend.services.llm_tools import (
@@ -28,6 +25,7 @@ from backend.services.research.models import (
     ThreadSeed,
 )
 from backend.services.research.trip import research_trip
+from postgres_client import pg
 from prompts_loader import load_prompt
 
 log = logging.getLogger("riksdagen.research.board")
@@ -88,7 +86,7 @@ def _llm_call_failed(res) -> bool:
     return isinstance(res, str) and res.startswith("Remote API failed")
 
 
-def _dec_jsonb(value, key: Optional[bytes]):
+def _dec_jsonb(value, key: bytes | None):
     """JSONB content field: encrypted boards store the whole JSON value as one
     ciphertext string (a bare JSON string is valid jsonb)."""
     if key is not None and crypto_blob.is_encrypted(value):
@@ -96,14 +94,14 @@ def _dec_jsonb(value, key: Optional[bytes]):
     return value
 
 
-def _enc_jsonb(value, key: Optional[bytes]) -> str:
+def _enc_jsonb(value, key: bytes | None) -> str:
     dumped = json.dumps(value, ensure_ascii=False, default=str)
     if key is not None:
         return json.dumps(crypto_blob.encrypt_str(dumped, key))
     return dumped
 
 
-def _dec_thread_row(row: dict, key: Optional[bytes]) -> dict:
+def _dec_thread_row(row: dict, key: bytes | None) -> dict:
     if key is None:
         return row
     for f in _THREAD_TEXT_FIELDS:
@@ -115,7 +113,7 @@ def _dec_thread_row(row: dict, key: Optional[bytes]) -> dict:
     return row
 
 
-def _dec_board_row(row: dict, key: Optional[bytes]) -> dict:
+def _dec_board_row(row: dict, key: bytes | None) -> dict:
     if key is None:
         return row
     for f in _BOARD_TEXT_FIELDS:
@@ -124,12 +122,12 @@ def _dec_board_row(row: dict, key: Optional[bytes]) -> dict:
     return row
 
 
-def create_board(topic: str, title: Optional[str] = None,
+def create_board(topic: str, title: str | None = None,
                  target_depth: int = RESEARCH_TARGET_DEPTH,
-                 owner_session: Optional[str] = None,
-                 user_id: Optional[str] = None,
-                 wrapped_board_key: Optional[str] = None,
-                 key: Optional[bytes] = None) -> dict:
+                 owner_session: str | None = None,
+                 user_id: str | None = None,
+                 wrapped_board_key: str | None = None,
+                 key: bytes | None = None) -> dict:
     topic = " ".join((topic or "").split()).strip()
     title = (title or "").strip() or _placeholder_title(topic)
     rows = pg.execute(
@@ -153,7 +151,7 @@ def create_board(topic: str, title: Optional[str] = None,
     return {**dict(rows[0]), "title": title, "topic": topic}
 
 
-def board_access(board_id: str) -> Optional[dict]:
+def board_access(board_id: str) -> dict | None:
     """{"owner_session", "user_id"} for a board, or None if it doesn't exist."""
     rows = pg.execute(
         "SELECT owner_session, user_id::text AS user_id FROM research_boards WHERE id = %s",
@@ -162,7 +160,7 @@ def board_access(board_id: str) -> Optional[dict]:
     return dict(rows[0]) if rows else None
 
 
-def get_board(board_id: str, key: Optional[bytes] = None) -> Optional[dict]:
+def get_board(board_id: str, key: bytes | None = None) -> dict | None:
     rows = pg.execute(
         """
         SELECT id::text AS id, title, topic, intro, status, revision, target_depth,
@@ -176,8 +174,8 @@ def get_board(board_id: str, key: Optional[bytes] = None) -> Optional[dict]:
     return _dec_board_row(dict(rows[0]), key) if rows else None
 
 
-def list_boards(owner_session: Optional[str] = None,
-                user_id: Optional[str] = None) -> List[dict]:
+def list_boards(owner_session: str | None = None,
+                user_id: str | None = None) -> list[dict]:
     """Boards for one browser and/or one account. With neither, returns
     nothing — the list is always scoped so no one sees another's research.
     Encrypted boards come back with ciphertext titles + the wrapped board key;
@@ -202,7 +200,7 @@ def list_boards(owner_session: Optional[str] = None,
     return [dict(r) for r in rows]
 
 
-def get_threads(board_id: str, key: Optional[bytes] = None) -> List[dict]:
+def get_threads(board_id: str, key: bytes | None = None) -> list[dict]:
     rows = pg.execute(
         """
         SELECT id::text AS id, title, question, why, origin, depth, status, pinned,
@@ -217,8 +215,8 @@ def get_threads(board_id: str, key: Optional[bytes] = None) -> List[dict]:
     return [_dec_thread_row(dict(r), key) for r in rows]
 
 
-def set_board_status(board_id: str, status: str, intro: Optional[str] = None,
-                     key: Optional[bytes] = None, title: Optional[str] = None) -> None:
+def set_board_status(board_id: str, status: str, intro: str | None = None,
+                     key: bytes | None = None, title: str | None = None) -> None:
     """Advance a board's status, optionally writing the intro and/or title the
     discovery pass produced. Both are board content, so both go through
     crypto_blob.enc — a None leaves the stored value untouched."""
@@ -250,9 +248,9 @@ def delete_board(board_id: str) -> bool:
 
 def insert_thread(board_id: str, *, title: str, question: str, why: str = "",
                   origin: str = "auto", pinned: bool = False,
-                  status: str = "active", guidance: Optional[str] = None,
-                  hints: Optional[List[str]] = None,
-                  key: Optional[bytes] = None) -> dict:
+                  status: str = "active", guidance: str | None = None,
+                  hints: list[str] | None = None,
+                  key: bytes | None = None) -> dict:
     rows = pg.execute(
         """
         INSERT INTO research_threads
@@ -283,7 +281,7 @@ def insert_thread(board_id: str, *, title: str, question: str, why: str = "",
     return {**dict(rows[0]), "title": title, "question": question, "why": why}
 
 
-def insert_seed_thread(board_id: str, text: str, key: Optional[bytes] = None) -> dict:
+def insert_seed_thread(board_id: str, text: str, key: bytes | None = None) -> dict:
     """User-seeded thread: plain INSERT (no LLM), pinned on top, depth 0.
 
     A running dig naturally picks it up next (shallowest-first)."""
@@ -296,8 +294,8 @@ def insert_seed_thread(board_id: str, text: str, key: Optional[bytes] = None) ->
 
 
 def activate_thread(thread_id: str, board_id: str,
-                    guidance: Optional[str] = None,
-                    key: Optional[bytes] = None) -> bool:
+                    guidance: str | None = None,
+                    key: bytes | None = None) -> bool:
     """Approve a proposed thread (optionally with user guidance for its trips).
     Returns False if the thread wasn't a pending proposal on this board.
     Caller bumps the board revision once per batch."""
@@ -345,7 +343,7 @@ def count_proposed(board_id: str) -> int:
 
 
 def set_thread_answer(thread_id: str, board_id: str, answer: str, depth: int,
-                      key: Optional[bytes] = None) -> None:
+                      key: bytes | None = None) -> None:
     pg.execute_void(
         """
         UPDATE research_threads
@@ -357,7 +355,7 @@ def set_thread_answer(thread_id: str, board_id: str, answer: str, depth: int,
     bump_revision(board_id)
 
 
-def set_board_report(board_id: str, report: str, key: Optional[bytes] = None) -> None:
+def set_board_report(board_id: str, report: str, key: bytes | None = None) -> None:
     pg.execute_void(
         """
         UPDATE research_boards
@@ -408,14 +406,14 @@ def merge_research(thread: dict, res: ThreadResearch) -> dict:
 
     # Leads are replaced rather than accumulated: old leads either got followed
     # (this trip) or superseded by fresher ones; dedup by (kind, target).
-    leads: List[dict] = []
+    leads: list[dict] = []
     l_known = set()
-    for l in res.leads:
-        key = (l.kind, _norm(l.target))
+    for lead in res.leads:
+        key = (lead.kind, _norm(lead.target))
         if key in l_known:
             continue
         l_known.add(key)
-        leads.append(l.model_dump())
+        leads.append(lead.model_dump())
     if not leads:
         leads = list(thread.get("leads") or [])
     leads = leads[:_MAX_LEADS]
@@ -447,7 +445,7 @@ def _search_material(query: str, seen_ids: set, *,
     (they carry no party attribution)."""
     from backend.services.llm_tools import search_speeches, vector_search_debates
 
-    parts: List[str] = []
+    parts: list[str] = []
     # Speeches (anföranden): named speaker + party — the substance for positions.
     try:
         _tool_structured_result.set(None)
@@ -508,7 +506,7 @@ def scout_material(fast_llm, topic: str, rounds: int = RESEARCH_SCOUT_ROUNDS,
     topic; each later round asks the fast model for 2-4 new angles and searches
     those. Failed LLM calls skip the round rather than abort the scout."""
     seen_ids: set = set()
-    searched: List[str] = [topic]
+    searched: list[str] = [topic]
     if on_event:
         on_event(topic)
     material = _search_material(topic, seen_ids)
@@ -575,7 +573,7 @@ def scout_material(fast_llm, topic: str, rounds: int = RESEARCH_SCOUT_ROUNDS,
 
 
 def discover_threads(llm, board: dict, max_threads: int = RESEARCH_MAX_THREADS,
-                     material: Optional[str] = None) -> BoardSeeds:
+                     material: str | None = None) -> BoardSeeds:
     """Propose up to ``max_threads`` open threads about the board topic,
     grounded in real search material (a cheap single pass by default; the
     scout job passes in richer multi-round material). Falls back to a single
@@ -638,8 +636,8 @@ def discover_threads(llm, board: dict, max_threads: int = RESEARCH_MAX_THREADS,
 _FOLLOWUP_SYSTEM = load_prompt("research/followup")
 
 
-def propose_followups(fast_llm, board: dict, threads: List[dict],
-                      key: Optional[bytes] = None) -> List[ThreadSeed]:
+def propose_followups(fast_llm, board: dict, threads: list[dict],
+                      key: bytes | None = None) -> list[ThreadSeed]:
     """After a dig round: turn accumulated open questions + leads into new
     *proposed* threads for the user to approve. Deterministic dedup against
     every existing thread (including archived, so dismissed proposals don't
@@ -651,7 +649,7 @@ def propose_followups(fast_llm, board: dict, threads: List[dict],
     if not active:
         return []
 
-    lines: List[str] = [f"ÄMNE: {board.get('topic') or ''}"]
+    lines: list[str] = [f"ÄMNE: {board.get('topic') or ''}"]
     if board.get("intro"):
         lines.append(f"INTRO: {board['intro']}")
     lines.append("")
@@ -659,9 +657,9 @@ def propose_followups(fast_llm, board: dict, threads: List[dict],
         lines.append(f"TRÅD: {t.get('title') or ''}")
         for q in (t.get("open_questions") or [])[:6]:
             lines.append(f"  Obesvarad fråga: {q}")
-        for l in (t.get("leads") or [])[:6]:
-            lead_txt = l.get("lead") or l.get("target") or ""
-            lines.append(f"  Spår ({l.get('kind')}): {lead_txt}")
+        for lead in (t.get("leads") or [])[:6]:
+            lead_txt = lead.get("lead") or lead.get("target") or ""
+            lines.append(f"  Spår ({lead.get('kind')}): {lead_txt}")
         lines.append("")
 
     # Every thread ever created on the board (any status) blocks re-proposals.
@@ -670,7 +668,7 @@ def propose_followups(fast_llm, board: dict, threads: List[dict],
         (board["id"],),
     )
     existing_norms = set()
-    existing_titles: List[str] = []
+    existing_titles: list[str] = []
     for r in rows:
         title = crypto_blob.dec(r["title"], key) or ""
         question = crypto_blob.dec(r["question"], key) or ""
@@ -703,7 +701,7 @@ def propose_followups(fast_llm, board: dict, threads: List[dict],
     parsed = getattr(res, "parsed", None) if not isinstance(res, str) else None
     if not isinstance(parsed, BoardSeeds):
         return []
-    out: List[ThreadSeed] = []
+    out: list[ThreadSeed] = []
     for seed in parsed.threads:
         if _norm(seed.title) in existing_norms or _norm(seed.question) in existing_norms:
             continue
@@ -718,7 +716,7 @@ def propose_followups(fast_llm, board: dict, threads: List[dict],
 
 
 def pick_next_thread(board_id: str, target_depth: int,
-                     key: Optional[bytes] = None) -> Optional[dict]:
+                     key: bytes | None = None) -> dict | None:
     """Shallowest active thread under the depth ceiling (greedy breadth-leveling)."""
     rows = pg.execute(
         """
@@ -733,7 +731,7 @@ def pick_next_thread(board_id: str, target_depth: int,
     return _dec_thread_row(dict(rows[0]), key) if rows else None
 
 
-def get_thread(thread_id: str, key: Optional[bytes] = None) -> Optional[dict]:
+def get_thread(thread_id: str, key: bytes | None = None) -> dict | None:
     rows = pg.execute(
         """
         SELECT id::text AS id, board_id::text AS board_id, title, question, why,
@@ -751,11 +749,11 @@ def deepen_step(
     fast_llm,
     board_id: str,
     *,
-    thread_id: Optional[str] = None,
-    lead: Optional[dict] = None,
-    hints: Optional[List[str]] = None,
+    thread_id: str | None = None,
+    lead: dict | None = None,
+    hints: list[str] | None = None,
     on_event=None,
-    key: Optional[bytes] = None,
+    key: bytes | None = None,
 ) -> bool:
     """Run ONE research trip and persist the merged result.
 
@@ -790,7 +788,7 @@ def deepen_step(
         # Seed the trip from the thread's stored leads (the previous trip's
         # direction proposals) — this is what makes deepening feel like digging.
         trip_hints = [
-            l.get("target") for l in (thread.get("leads") or []) if l.get("target")
+            lead.get("target") for lead in (thread.get("leads") or []) if lead.get("target")
         ][:6]
     if not trip_hints and int(thread.get("depth") or 0) == 0:
         # Fresh thread with no trips yet: fall back to the discovery hints

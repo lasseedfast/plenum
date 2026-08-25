@@ -7,13 +7,12 @@ See backend/services/auth.py for the primitives.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from postgres_client import pg
 from backend.services import auth as auth_svc
+from postgres_client import pg
 
 log = logging.getLogger("riksdagen.auth")
 
@@ -132,7 +131,7 @@ def login(payload: LoginRequest, request: Request) -> AuthResponse:
 
 
 @router.post("/logout", status_code=204, response_model=None)
-def logout(token: Optional[str] = Depends(auth_svc.bearer_token)) -> None:
+def logout(token: str | None = Depends(auth_svc.bearer_token)) -> None:
     if token:
         auth_svc.revoke_token(token)
 
@@ -153,7 +152,7 @@ def change_password(
     payload: ChangePasswordRequest,
     request: Request,
     user: dict = Depends(auth_svc.get_current_user),
-    token: Optional[str] = Depends(auth_svc.bearer_token),
+    token: str | None = Depends(auth_svc.bearer_token),
 ) -> None:
     """Re-wrap flow: the client re-wraps the same DEK under the new password's
     KEK, so stored content needs no re-encryption. Other sessions are logged out."""

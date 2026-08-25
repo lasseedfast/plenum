@@ -40,8 +40,8 @@ import sys
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
 from postgres_client import pg
 
@@ -51,7 +51,7 @@ log = logging.getLogger("riksdagen.research.jobs")
 # handler module (backend/job_runner.py imports them in the child).
 JobHandler = Callable[[dict, "JobContext"], None]
 _HANDLERS: dict[str, JobHandler] = {}
-_RUNTIME_CAPS: dict[str, Optional[int]] = {}
+_RUNTIME_CAPS: dict[str, int | None] = {}
 
 # Popen handles of children spawned by *this* web worker, reaped lazily so
 # finished children don't linger as zombies while the worker is alive.
@@ -85,11 +85,11 @@ def register(
     return deco
 
 
-def get_handler(kind: str) -> Optional[JobHandler]:
+def get_handler(kind: str) -> JobHandler | None:
     return _HANDLERS.get(kind)
 
 
-def runtime_cap_for(kind: str) -> Optional[int]:
+def runtime_cap_for(kind: str) -> int | None:
     return _RUNTIME_CAPS.get(kind, MAX_JOB_RUNTIME_SECS)
 
 
@@ -144,8 +144,8 @@ class JobContext:
     numeric progress stays plaintext so progress bars need no key.
     """
 
-    def __init__(self, job_id: str, kind: str, board_id: Optional[str],
-                 board_key: Optional[bytes] = None):
+    def __init__(self, job_id: str, kind: str, board_id: str | None,
+                 board_key: bytes | None = None):
         self.job_id = job_id
         self.kind = kind
         self.board_id = board_id
@@ -162,12 +162,12 @@ class JobContext:
 
     def progress(
         self,
-        done: Optional[int] = None,
-        total: Optional[int] = None,
+        done: int | None = None,
+        total: int | None = None,
         current: str = "",
         message: str = "",
         level: str = "info",
-        data: Optional[dict] = None,
+        data: dict | None = None,
     ) -> None:
         if done is not None:
             self.progress_state["done"] = done
@@ -288,8 +288,8 @@ class JobContext:
 # ---------------------------------------------------------------------------
 
 
-def spawn_job(*, kind: str, board_id: Optional[str] = None, params: Optional[dict] = None,
-              secrets: Optional[dict] = None) -> dict:
+def spawn_job(*, kind: str, board_id: str | None = None, params: dict | None = None,
+              secrets: dict | None = None) -> dict:
     """Start job ``kind`` in a child OS process and return its id immediately.
 
     The spec passed on the child's stdin is ``{job_id, kind, params, secrets}``.
@@ -390,7 +390,7 @@ def get_events(job_id: str, offset: int = 0) -> dict:
     }
 
 
-def running_job_for_board(board_id: str) -> Optional[dict]:
+def running_job_for_board(board_id: str) -> dict | None:
     """The board's currently-running job row (dict), or None."""
     try:
         rows = pg.execute(
@@ -420,8 +420,8 @@ def count_running_jobs(server_key_only: bool = False) -> int:
         return 0
 
 
-def count_running_byo_jobs(owner_session: Optional[str] = None,
-                           user_id: Optional[str] = None) -> int:
+def count_running_byo_jobs(owner_session: str | None = None,
+                           user_id: str | None = None) -> int:
     """Running bring-your-own-key jobs belonging to one browser or one account.
 
     With neither identifier the answer is 0 — an unattributable job must never
@@ -587,7 +587,7 @@ def execute_spec(spec: dict) -> None:
     redact = _redactor(secrets)
 
     # The board key (encrypted boards) stays in this process's memory only.
-    board_key: Optional[bytes] = None
+    board_key: bytes | None = None
     raw_key = secrets.pop("board_key", None)
     if raw_key:
         import base64

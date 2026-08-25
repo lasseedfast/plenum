@@ -3,27 +3,25 @@ MP Chat Service — role-plays as a specific Riksdag member, grounded in their a
 """
 from __future__ import annotations
 
-import os
 import json
+import os
 import queue
 import re as _re
 import threading
-from typing import Any, Callable, Dict, Generator, List, Optional, Sequence, Tuple
-
-from packages.llm import LLM, get_tools, ChatCompletionMessage
-from packages.colorprinter import *
+from collections.abc import Callable, Generator, Sequence
+from typing import Any
 
 from backend.services.chat import (
     FAST_MODEL,
     SMART_MODEL,
-    WORKER_SYSTEM,
     SUMMARIZE_THRESHOLD,
-    FinalAnswer,
+    WORKER_SYSTEM,
     ChatService,
+    FinalAnswer,
 )
 from backend.services.llm_tools import (
-    SearchHitsResult,
     HitsResponse,
+    SearchHitsResult,
     _tool_structured_result,
 )
 from backend.services.provenance import (
@@ -31,13 +29,15 @@ from backend.services.provenance import (
     parse_and_renumber_citations,
 )
 from backend.services.streaming_answer import run_streaming_iteration
+from packages.colorprinter import *
+from packages.llm import LLM, ChatCompletionMessage, get_tools
 
-ChatMessage = Dict[str, Any]
-ChatSource = Dict[str, Any]
-ChatResponse = Dict[str, Any]
+ChatMessage = dict[str, Any]
+ChatSource = dict[str, Any]
+ChatResponse = dict[str, Any]
 
 
-def _build_persona_system(person: Dict[str, Any], initial_talk: Optional[Dict[str, Any]] = None) -> str:
+def _build_persona_system(person: dict[str, Any], initial_talk: dict[str, Any] | None = None) -> str:
     first_name = person.get("first_name") or ""
     last_name = person.get("last_name") or ""
     name = person.get("name") or f"{first_name} {last_name}".strip()
@@ -150,7 +150,7 @@ Inkludera inline-källhänvisningar i formatet [src:ID] direkt efter påstående
 """
 
 
-def _collect_sources_from_payload(payload: Dict[str, Any], collected_sources: List[ChatSource]) -> None:
+def _collect_sources_from_payload(payload: dict[str, Any], collected_sources: list[ChatSource]) -> None:
     """Extract sources from an search_speeches payload dict and append to collected_sources."""
     results = payload.get("results", [])
     for item in results:
@@ -172,7 +172,7 @@ def _collect_sources_from_payload(payload: Dict[str, Any], collected_sources: Li
         })
 
 
-def _collect_persons_from_results(results: List[Any], collected_persons: Dict[str, Dict]) -> None:
+def _collect_persons_from_results(results: list[Any], collected_persons: dict[str, dict]) -> None:
     """Extract person_id / speaker / party from search result items."""
     for item in results:
         if not isinstance(item, dict):
@@ -192,7 +192,7 @@ class MpChatService:
     grounded in their actual parliamentary record.
     """
 
-    def __init__(self, person_id: str, initial_speech_id: Optional[str] = None,
+    def __init__(self, person_id: str, initial_speech_id: str | None = None,
                  provider_override=None) -> None:
         from postgres_client import pg
 
@@ -248,10 +248,10 @@ class MpChatService:
     def stream_chat_response(
         self,
         messages: Sequence[ChatMessage],
-    ) -> Generator[Dict[str, Any], None, None]:
-        event_queue: queue.Queue[Dict[str, Any]] = queue.Queue()
+    ) -> Generator[dict[str, Any], None, None]:
+        event_queue: queue.Queue[dict[str, Any]] = queue.Queue()
 
-        def emit(event: Dict[str, Any]) -> None:
+        def emit(event: dict[str, Any]) -> None:
             event_queue.put(event)
 
         def run() -> None:
@@ -277,7 +277,7 @@ class MpChatService:
     def _get_chat_response(
         self,
         messages: Sequence[ChatMessage],
-        event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
         stream_answer: bool = False,
     ) -> ChatResponse:
         name = self.person.get("name") or ""
@@ -309,8 +309,8 @@ class MpChatService:
             f"En medborgare frågar {first_name}: *{latest_user}*{search_reminder}"
         )
 
-        collected_sources: List[ChatSource] = []
-        collected_persons: Dict[str, Dict] = {}
+        collected_sources: list[ChatSource] = []
+        collected_persons: dict[str, dict] = {}
         registry = ProvenanceRegistry()
         response_message, _ = self._run_tool_loop(
             full_messages,
@@ -358,14 +358,14 @@ class MpChatService:
     def _run_tool_loop(
         self,
         messages: Sequence[ChatMessage],
-        collected_sources: List[ChatSource],
-        collected_persons: Dict[str, Dict],
+        collected_sources: list[ChatSource],
+        collected_persons: dict[str, dict],
         user_question: str = "",
-        event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
-        registry: Optional[ProvenanceRegistry] = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
+        registry: ProvenanceRegistry | None = None,
         stream_answer: bool = False,
-    ) -> Tuple[FinalAnswer, List[ChatMessage]]:
-        current_messages: List[ChatMessage] = list(messages)
+    ) -> tuple[FinalAnswer, list[ChatMessage]]:
+        current_messages: list[ChatMessage] = list(messages)
 
         for i in range(self.max_tool_iterations):
             if i == self.max_tool_iterations - 1:
@@ -421,7 +421,7 @@ class MpChatService:
                     ],
                 })
 
-                tool_result_messages: List[Dict[str, Any]] = []
+                tool_result_messages: list[dict[str, Any]] = []
                 for tool_call in tool_calls:
                     tool_name = tool_call.function.name
                     tool_args = tool_call.function.arguments
@@ -446,7 +446,9 @@ class MpChatService:
                             tool_result = tool_func(**tool_args)
                         except Exception as e:
                             print_red(f"[MpChat] Exception in tool '{tool_name}': {e}")
-                            import traceback; traceback.print_exc()
+                            import traceback
+
+                            traceback.print_exc()
                             tool_result = f"ERROR: {e}"
 
                         structured = _tool_structured_result.get()
@@ -580,10 +582,10 @@ class MpChatService:
     def _handle_tool_result(
         self,
         tool_name: str,
-        tool_args: Dict[str, Any],
+        tool_args: dict[str, Any],
         tool_result: Any,
-        collected_sources: List[ChatSource],
-        collected_persons: Dict[str, Dict],
+        collected_sources: list[ChatSource],
+        collected_persons: dict[str, dict],
     ) -> str:
         """
         Normalise the return value of any tool into a string for the LLM,
@@ -626,7 +628,7 @@ class MpChatService:
         # Fallback
         return json.dumps(tool_result, ensure_ascii=False)
 
-    def _get_unique_name_persons(self, persons: Dict[str, Dict]) -> Dict[str, Dict]:
+    def _get_unique_name_persons(self, persons: dict[str, dict]) -> dict[str, dict]:
         """
         Look up each collected person by person_id to get the canonical DB name,
         then keep only those whose name is unique in the people table.
@@ -649,7 +651,7 @@ class MpChatService:
                 ([n.lower() for n in names],)
             )
             unique_names_lower = {r["name"].lower() for r in unique_rows}
-            result: Dict[str, Dict] = {}
+            result: dict[str, dict] = {}
             for row in id_rows:
                 if row["name"].lower() in unique_names_lower:
                     result[row["person_id"]] = {
@@ -662,7 +664,7 @@ class MpChatService:
             print_red(f"[MpChat] Person uniqueness check failed: {e}")
             return {}
 
-    def _inject_person_links(self, answer_text: str, unique_persons: Dict[str, Dict]) -> Tuple[List[Dict], str]:
+    def _inject_person_links(self, answer_text: str, unique_persons: dict[str, dict]) -> tuple[list[dict], str]:
         """
         Inject markdown person links for persons with unique names.
         First occurrence: [Name (Party)](/mp/id), subsequent: [Name](/mp/id).

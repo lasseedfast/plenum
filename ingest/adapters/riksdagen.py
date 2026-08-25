@@ -16,8 +16,9 @@ Two things about this source that will probably bite you elsewhere too:
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Iterator
 from datetime import date, datetime
-from typing import Any, Iterable, Iterator, Optional
+from typing import Any
 
 # ── source quirks ─────────────────────────────────────────────────────────────
 
@@ -42,7 +43,7 @@ def _clean(value: Any) -> Any:
     return value
 
 
-def _parse_date(raw: Optional[str]) -> Optional[date]:
+def _parse_date(raw: str | None) -> date | None:
     """Dates arrive as "YYYY-MM-DD HH:MM:SS", sometimes without the time."""
     if not raw:
         return None
@@ -54,7 +55,7 @@ def _parse_date(raw: Optional[str]) -> Optional[date]:
     return None
 
 
-def _session_start_year(session_label: Optional[str]) -> Optional[int]:
+def _session_start_year(session_label: str | None) -> int | None:
     """"2022/23" -> 2022."""
     if not session_label:
         return None
@@ -73,7 +74,7 @@ _TITLE_PREFIXES = re.compile(
 _TRAILING_PARTY = re.compile(r"\s*\([A-ZÅÄÖ\-]{1,4}\)\s*$")
 
 
-def _clean_speaker(name: Optional[str]) -> Optional[str]:
+def _clean_speaker(name: str | None) -> str | None:
     """Strip honorifics and the trailing party, so names join to the register."""
     if not name:
         return None
@@ -103,7 +104,7 @@ SPEECH_FIELDS: dict[str, str] = {
 }
 
 
-def adapt_speech(payload: dict) -> Optional[dict]:
+def adapt_speech(payload: dict) -> dict | None:
     """Turn one source record into a `speeches` row, or None if unusable."""
     doc = payload.get("anforande") if "anforande" in payload else payload
     if not doc:
@@ -149,7 +150,7 @@ DOCUMENT_FIELDS: dict[str, str] = {
 }
 
 
-def adapt_document(payload: dict) -> Optional[dict]:
+def adapt_document(payload: dict) -> dict | None:
     """Turn one `dokumentstatus` record into a `documents` row plus its children.
 
     Returns a dict with keys `document`, `authors` and `proposals`; the caller
@@ -209,14 +210,14 @@ def adapt_document(payload: dict) -> Optional[dict]:
     return {"document": row, "authors": authors, "proposals": proposals}
 
 
-def _html_to_text(html: str) -> Optional[str]:
+def _html_to_text(html: str) -> str | None:
     from bs4 import BeautifulSoup
 
     text = BeautifulSoup(html, "html.parser").get_text("\n")
     return re.sub(r"\n{3,}", "\n\n", text).strip() or None
 
 
-def _pdf_url(status: dict) -> Optional[str]:
+def _pdf_url(status: dict) -> str | None:
     for attachment in _as_list((status.get("dokbilaga") or {}).get("bilaga")):
         url = _clean(attachment.get("fil_url"))
         if url and url.lower().endswith(".pdf"):
@@ -247,7 +248,7 @@ PERSON_FIELDS: dict[str, str] = {
 }
 
 
-def adapt_person(payload: dict) -> Optional[dict]:
+def adapt_person(payload: dict) -> dict | None:
     if not payload.get("intressent_id"):
         return None
     row = {col: _clean(payload.get(src)) for col, src in PERSON_FIELDS.items()}
@@ -265,12 +266,12 @@ ADAPTERS = {
 }
 
 
-def adapt(kind: str, payload: dict) -> Optional[dict]:
+def adapt(kind: str, payload: dict) -> dict | None:
     """Adapt one record of the named kind."""
     try:
         return ADAPTERS[kind](payload)
-    except KeyError:
-        raise ValueError(f"Unknown record kind {kind!r}; expected one of {sorted(ADAPTERS)}")
+    except KeyError as exc:
+        raise ValueError(f"Unknown record kind {kind!r}; expected one of {sorted(ADAPTERS)}") from exc
 
 
 def adapt_many(kind: str, payloads: Iterable[dict]) -> Iterator[dict]:

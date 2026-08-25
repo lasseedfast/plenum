@@ -1,24 +1,23 @@
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
 
 class SearchFilters(BaseModel):
-    parties: List[str] = Field(default_factory=list)
-    people: List[str] = Field(default_factory=list)
-    debates: List[str] = Field(default_factory=list)
-    from_year: Optional[int] = None
-    to_year: Optional[int] = None
+    parties: list[str] = Field(default_factory=list)
+    people: list[str] = Field(default_factory=list)
+    debates: list[str] = Field(default_factory=list)
+    from_year: int | None = None
+    to_year: int | None = None
 
 
 class SearchRequest(SearchFilters):
     q: str = ""
     limit: int = None
     include_snippets: bool = True
-    speaker: Optional[str] = None  # Exact speaker match if user selects it.
-    speaker_ids: Optional[List[str]] = None  # The _key from the people collection
-    
+    speaker: str | None = None  # Exact speaker match if user selects it.
+    speaker_ids: list[str] | None = None  # The _key from the people collection
+
     class Config:
         # This ensures None values are included in the serialized output
         # and helps with debugging
@@ -35,19 +34,19 @@ class SearchRequest(SearchFilters):
 class TalkHit(BaseModel):
     id: str = Field(..., alias="_id")  # Use 'id' as field name, alias to '_id'
     text: str
-    snippet: Optional[str] = None  # Add default to make validation more forgiving
-    snippet_long: Optional[str] = None
-    number: Optional[int] = None
-    debate_type: Optional[str] = None
-    speaker: Optional[str] = None
-    date: Optional[str] = None
-    year: Optional[int] = None
-    url_session: Optional[str] = None
-    party: Optional[str] = None
-    url_audio: Optional[str] = None
-    audio_start_seconds: Optional[int] = None
-    person_id: Optional[str] = None
-    
+    snippet: str | None = None  # Add default to make validation more forgiving
+    snippet_long: str | None = None
+    number: int | None = None
+    debate_type: str | None = None
+    speaker: str | None = None
+    date: str | None = None
+    year: int | None = None
+    url_session: str | None = None
+    party: str | None = None
+    url_audio: str | None = None
+    audio_start_seconds: int | None = None
+    person_id: str | None = None
+
     class Config:
         # Allow extra fields from the database that we don't explicitly define
         extra = "ignore"
@@ -62,7 +61,7 @@ class AggregatedStats(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    results: List[TalkHit]
+    results: list[TalkHit]
     stats: AggregatedStats
     active_filters: SearchFilters
     limit_reached: bool = False
@@ -83,10 +82,10 @@ class ChatTurn(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    messages: List[ChatTurn]
+    messages: list[ChatTurn]
     limit: int = 5  # semantic context size
 
 
 class ChatResponse(BaseModel):
     reply: str
-    citations: List[TalkHit]
+    citations: list[TalkHit]

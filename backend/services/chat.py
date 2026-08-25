@@ -1,54 +1,55 @@
 from __future__ import annotations
 
+import json
 import os
 import queue
+import re
 import threading
+from collections.abc import Callable, Generator, Sequence
+from datetime import date
+from typing import Any
 
-from backend.services.event_logger import log_event, log_error
+from pydantic import BaseModel, Field
+
 from backend.services.eval_conversation_logger import (
     ConversationRecorder,
     detect_and_strip_test_prefix,
     sanitize_provider,
 )
-from typing import Any, Callable, Dict, Generator, List, Sequence, Optional, Tuple
-from pydantic import BaseModel, Field
-import backend.services.llm_tools
+from backend.services.event_logger import log_error, log_event
 from backend.services.llm_tools import (
-    SearchHitsResult,
     HitsResponse,
-    _tool_structured_result,
+    SearchHitsResult,
+    _fast_llm_var,
     _insight_callback,
     _provenance_registry,
-    _fast_llm_var,
+    _tool_structured_result,
     share_insight,
 )
-from packages.llm import LLM, get_tools, ChatCompletionMessage
 from backend.services.provenance import (
+    _SRC_PATTERN,
     ProvenanceRegistry,
     SourceRecord,
     normalize_talk_id,
     parse_and_renumber_citations,
-    _SRC_PATTERN,
 )
-from backend.services.streaming_answer import run_streaming_iteration
 from backend.services.research_models import (
-    ResearchRequest,
     ResearchReport,
+    ResearchRequest,
     SubFinding,
     SubQuestion,
 )
+from backend.services.streaming_answer import run_streaming_iteration
 from packages.colorprinter import *
-import json
-import re
-from datetime import date
+from packages.llm import LLM, ChatCompletionMessage, get_tools
 from prompts_loader import load_prompt
 
-ChatResponse = Dict[str, Any]
-ChatSource = Dict[str, Any]
-ChatMessage = Dict[str, Any]
+ChatResponse = dict[str, Any]
+ChatSource = dict[str, Any]
+ChatMessage = dict[str, Any]
 
 
-def _is_duplicate_insight(candidate: str, sent: List[str], threshold: float = 0.6) -> bool:
+def _is_duplicate_insight(candidate: str, sent: list[str], threshold: float = 0.6) -> bool:
     """Return True if candidate overlaps too heavily with any previously sent insight.
 
     Uses word-level Jaccard similarity so model-instruction dedup failures don't
@@ -294,12 +295,12 @@ class ChatService:
         self,
         messages: Sequence[ChatMessage],
         top_k: int = 30,
-        focus_ids: Optional[Sequence[str]] = None,
+        focus_ids: Sequence[str] | None = None,
         provider_override=None,
         use_editor: bool = False,
         quick: bool = False,
-        session_id: Optional[str] = None,
-    ) -> Generator[Dict[str, Any], None, None]:
+        session_id: str | None = None,
+    ) -> Generator[dict[str, Any], None, None]:
         """
         Run get_chat_response in a background thread and yield SSE-compatible
         event dicts as the tool loop progresses.
@@ -318,9 +319,9 @@ class ChatService:
           {"type": "answer",    "answer": "...", "sources": [...], ...} – final answer
           {"type": "error",     "message": "<text>"} – unhandled exception
         """
-        event_queue: queue.Queue[Dict[str, Any]] = queue.Queue()
+        event_queue: queue.Queue[dict[str, Any]] = queue.Queue()
 
-        def emit(event: Dict[str, Any]) -> None:
+        def emit(event: dict[str, Any]) -> None:
             if event.get("_eval_only"):
                 return  # eval-log-only events must never reach the SSE stream
             event_queue.put(event)
@@ -354,12 +355,12 @@ class ChatService:
         self,
         messages: Sequence[ChatMessage],
         top_k: int = 30,
-        focus_ids: Optional[Sequence[str]] = None,
-        event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        focus_ids: Sequence[str] | None = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
         provider_override=None,
         use_editor: bool = False,
         quick: bool = False,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
         stream_answer: bool = False,
     ) -> ChatResponse:
         """
@@ -413,8 +414,8 @@ class ChatService:
         self,
         messages: Sequence[ChatMessage],
         top_k: int = 30,
-        focus_ids: Optional[Sequence[str]] = None,
-        event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        focus_ids: Sequence[str] | None = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
         provider_override=None,
         use_editor: bool = False,
         quick: bool = False,
@@ -438,7 +439,7 @@ class ChatService:
             language_llm_chain,
             supports_thinking,
         ) = self._build_llm_instances(provider_override)
-        print_yellow(f"Messages in chat:")
+        print_yellow("Messages in chat:")
         for msg in messages:
             print_yellow(msg)
         full_messages = [
@@ -463,14 +464,14 @@ class ChatService:
         print_yellow(
             f"[ChatService] Generating answer for {len(messages)} messages (top_k={top_k})."
         )
-        collected_sources: List[ChatSource] = []
-        collected_tables: List[Dict[str, Any]] = []
-        collected_persons: Dict[str, Dict] = {}
+        collected_sources: list[ChatSource] = []
+        collected_tables: list[dict[str, Any]] = []
+        collected_persons: dict[str, dict] = {}
         registry = ProvenanceRegistry()
         # Shared dedup list — passed through the researcher and into the
         # orchestrator's tool loop so the shadow communicator does not repeat
         # the same insight across both phases.
-        sent_insights: List[str] = []
+        sent_insights: list[str] = []
 
         # --- Optional research pre-pass ----------------------------------------
         # Plan the question into sub-questions. If 2+ are produced, dispatch a
@@ -632,7 +633,7 @@ class ChatService:
         self,
         user_question: str,
         smart_llm,
-    ) -> Optional[ResearchRequest]:
+    ) -> ResearchRequest | None:
         """Break the user's question into 1-3 sub-questions for research.
 
         Returns None on planner failure — caller should fall back to running the
@@ -675,13 +676,13 @@ class ChatService:
         sub_q: SubQuestion,
         request: ResearchRequest,
         registry: ProvenanceRegistry,
-        collected_sources: List[ChatSource],
-        collected_persons: Dict[str, Dict],
+        collected_sources: list[ChatSource],
+        collected_persons: dict[str, dict],
         smart_llm,
         fast_llm,
         communicator_llm=None,
-        sent_insights: Optional[List[str]] = None,
-        event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        sent_insights: list[str] | None = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> SubFinding:
         """Run a small tool loop for one sub-question. Returns a structured SubFinding.
 
@@ -698,14 +699,14 @@ class ChatService:
             f"{hints_block}\n\n"
             "Sök i databasen tills du har tillräckligt, sedan returnera SubFinding."
         )
-        messages: List[ChatMessage] = [
+        messages: list[ChatMessage] = [
             {"role": "system", "content": RESEARCHER_SYSTEM},
             {"role": "user", "content": user_msg},
         ]
         # Identical repeats are blocked and answered from cache (see _run_tool_loop).
-        _executed_calls: Dict[Tuple[str, str], str] = {}
+        _executed_calls: dict[tuple[str, str], str] = {}
 
-        for i in range(RESEARCH_ITERATIONS_PER_SUBQ):
+        for _i in range(RESEARCH_ITERATIONS_PER_SUBQ):
             # Compact old tool messages if history gets large.
             self._compact_old_tool_messages(messages, HISTORY_CHAR_BUDGET)
 
@@ -921,7 +922,7 @@ class ChatService:
             "(max 8), confidence = high/medium/low, gaps = kort beskrivning av vad du saknar."
         )
         attempts = 0
-        finding: Optional[SubFinding] = None
+        finding: SubFinding | None = None
         while attempts < 2 and finding is None:
             attempts += 1
             try:
@@ -975,13 +976,13 @@ class ChatService:
         self,
         request: ResearchRequest,
         registry: ProvenanceRegistry,
-        collected_sources: List[ChatSource],
-        collected_persons: Dict[str, Dict],
+        collected_sources: list[ChatSource],
+        collected_persons: dict[str, dict],
         smart_llm,
         fast_llm,
         communicator_llm=None,
-        sent_insights: Optional[List[str]] = None,
-        event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        sent_insights: list[str] | None = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> ResearchReport:
         """Run the researcher across all sub-questions and assemble a ResearchReport."""
         if registry is not None:
@@ -997,7 +998,7 @@ class ChatService:
             )
         if sent_insights is None:
             sent_insights = []
-        findings: List[SubFinding] = []
+        findings: list[SubFinding] = []
         for idx, sub_q in enumerate(request.sub_questions, start=1):
             print_purple(
                 f"[Researcher] investigating {sub_q.id}: {sub_q.question[:80]}…"
@@ -1115,15 +1116,15 @@ class ChatService:
     def _collect_sources_from_hits_response(
         self,
         hits_response: HitsResponse,
-        collected_sources: List[ChatSource],
-        collected_persons: Dict[str, Dict],
-    ) -> List[str]:
+        collected_sources: list[ChatSource],
+        collected_persons: dict[str, dict],
+    ) -> list[str]:
         """Collect sources and persons from a HitsResponse. Returns list of person_ids.
 
         Debate-level hits (from `vector_search_debates`) are skipped — they are
         navigation aids, not citable sources.
         """
-        person_ids: List[str] = []
+        person_ids: list[str] = []
         for hit in hits_response.hits:
             meta = hit.metadata or {}
             if meta.get("kind") == "debate" or (hit.id or "").startswith("debates/"):
@@ -1150,7 +1151,7 @@ class ChatService:
         return person_ids
 
     @staticmethod
-    def _compact_old_tool_messages(messages: List[ChatMessage], budget: int) -> int:
+    def _compact_old_tool_messages(messages: list[ChatMessage], budget: int) -> int:
         """If the running history exceeds `budget` chars, replace older tool
         message contents with a tiny placeholder. Preserves tool_call_id linkage
         so the OpenAI tool-call spec stays valid; the orchestrator can still
@@ -1195,7 +1196,7 @@ class ChatService:
         only needs source IDs + a short headline to know what was found. The
         full text remains available via `lookup_source([src:ID])`.
         """
-        lines: List[str] = []
+        lines: list[str] = []
         for hit in hits_response.hits:
             meta = hit.metadata or {}
             if meta.get("kind") == "debate" or (hit.id or "").startswith("debates/"):
@@ -1287,10 +1288,10 @@ class ChatService:
             return hits_response
 
         _fast = fast_llm or self.fast_llm
-        conversation: List[Dict[str, Any]] = [
+        conversation: list[dict[str, Any]] = [
             {"role": "system", "content": WORKER_SYSTEM}
         ]
-        summaries: Dict[str, str] = {}
+        summaries: dict[str, str] = {}
 
         for hit in needs_summary:
             doc_prompt = (
@@ -1336,20 +1337,20 @@ class ChatService:
     def _run_tool_loop(
         self,
         messages: Sequence[ChatMessage],
-        collected_sources: List[ChatSource],
-        collected_tables: List[Dict[str, Any]],
-        collected_persons: Dict[str, Dict],
-        initial_focus_ids: List[str],
+        collected_sources: list[ChatSource],
+        collected_tables: list[dict[str, Any]],
+        collected_persons: dict[str, dict],
+        initial_focus_ids: list[str],
         user_question: str = "",
-        event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
-        registry: Optional[ProvenanceRegistry] = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
+        registry: ProvenanceRegistry | None = None,
         smart_llm=None,
         fast_llm=None,
         communicator_llm=None,
         supports_thinking: bool = True,
-        sent_insights: Optional[List[str]] = None,
+        sent_insights: list[str] | None = None,
         stream_answer: bool = False,
-    ) -> Tuple[FinalAnswer, List[Dict[str, Any]], List[str]]:
+    ) -> tuple[FinalAnswer, list[dict[str, Any]], list[str]]:
         """
         Repeatedly call the smart LLM, executing tool calls as needed, until a
         final answer is produced.
@@ -1372,8 +1373,8 @@ class ChatService:
             _provenance_registry.set(registry)
         # Reader sub-agent (read_documents_for) uses the request's fast model.
         _fast_llm_var.set(_fast)
-        current_messages: List[ChatMessage] = list(messages)
-        active_focus_ids: List[str] = list(dict.fromkeys(initial_focus_ids))
+        current_messages: list[ChatMessage] = list(messages)
+        active_focus_ids: list[str] = list(dict.fromkeys(initial_focus_ids))
         # Tracks what the shadow communicator has already told the user this session,
         # so it can avoid outputting the same insight twice. Shared across the
         # researcher pre-pass and the orchestrator loop when caller passes one in.
@@ -1397,7 +1398,7 @@ class ChatService:
         # (tool_name, sorted-args-json) -> result string for every call already
         # executed this turn. Identical repeats are blocked and answered from
         # this cache with a nudge, so a confused model can't burn iterations.
-        _executed_calls: Dict[Tuple[str, str], str] = {}
+        _executed_calls: dict[tuple[str, str], str] = {}
         _DEDUP_EXEMPT = {"share_insight"}
         _citation_retries = 0
         _MAX_CITATION_RETRIES = 2
@@ -1516,7 +1517,7 @@ class ChatService:
                 print_blue(
                     f"[ChatService] Smart model requested {len(tool_calls)} tool call(s)."
                 )
-                tool_result_messages: List[Dict[str, Any]] = []
+                tool_result_messages: list[dict[str, Any]] = []
                 for tool_call in tool_calls:
                     tool_name = tool_call.function.name
                     tool_args = tool_call.function.arguments
@@ -1988,10 +1989,10 @@ class ChatService:
 
     def _shadow_communicate(
         self,
-        messages_snapshot: List[ChatMessage],
-        event_callback: Callable[[Dict[str, Any]], None],
-        sent_insights: List[str],
-        known_persons: Dict[str, Dict],
+        messages_snapshot: list[ChatMessage],
+        event_callback: Callable[[dict[str, Any]], None],
+        sent_insights: list[str],
+        known_persons: dict[str, dict],
         known_hit_ids: set,
         communicator_llm=None,
     ) -> None:
@@ -2100,7 +2101,7 @@ class ChatService:
         user_question: str,
         registry: ProvenanceRegistry,
         editor_llm,
-        event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> str:
         """Run one fact-check + language-polish pass over the draft answer.
 
@@ -2113,7 +2114,7 @@ class ChatService:
         # sources the orchestrator didn't use.
         cited_ids_raw = _SRC_PATTERN.findall(draft)
         seen: set[str] = set()
-        cited_ids: List[str] = []
+        cited_ids: list[str] = []
         for cid in cited_ids_raw:
             if cid not in seen and registry.get(cid):
                 cited_ids.append(cid)
@@ -2133,7 +2134,7 @@ class ChatService:
         except Exception as exc:
             print_red(f"[Editor] failed to fetch cited speeches: {exc}")
             return draft
-        talks_by_id: Dict[str, Dict[str, Any]] = {r["id"]: r for r in rows}
+        talks_by_id: dict[str, dict[str, Any]] = {r["id"]: r for r in rows}
 
         # Budget source text so the full editor prompt stays bounded. 24 000 chars
         # across N cited sources ≈ 6 000 tokens, leaving room for the draft, system
@@ -2144,7 +2145,7 @@ class ChatService:
         else:
             per_source = 0
 
-        source_blocks: List[str] = []
+        source_blocks: list[str] = []
         for sid in cited_ids:
             row = talks_by_id.get(sid)
             if not row:
@@ -2229,11 +2230,11 @@ class ChatService:
     def _fix_with_fact_check_feedback(
         self,
         answer_body: str,
-        warnings: List[Dict[str, Any]],
-        cited_sources: List[Dict[str, Any]],
+        warnings: list[dict[str, Any]],
+        cited_sources: list[dict[str, Any]],
         editor_llm,
         smart_llm,
-        event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> str:
         """Two-phase attribution fix: fact-checker produces JSON feedback, smart LLM rewrites.
 
@@ -2253,14 +2254,14 @@ class ChatService:
         _smart_model = getattr(smart_llm, "model", None)
 
         all_paras = answer_body.split("\n\n")
-        cited_to_actual: Dict[int, int] = {}
+        cited_to_actual: dict[int, int] = {}
         cited_idx = 0
         for actual_idx, para in enumerate(all_paras):
             if _cite_n_re.search(para):
                 cited_to_actual[cited_idx] = actual_idx
                 cited_idx += 1
 
-        by_para: Dict[int, List[Dict[str, Any]]] = {}
+        by_para: dict[int, list[dict[str, Any]]] = {}
         for w in warnings:
             by_para.setdefault(w["paragraph_idx"], []).append(w)
 
@@ -2280,7 +2281,7 @@ class ChatService:
 
         # Pre-fetch full talk texts for all cited sources in flagged paragraphs.
         all_ns: set = {n for ws in by_para.values() for w in ws for n in w["cited_ns"]}
-        talk_ids: List[str] = []
+        talk_ids: list[str] = []
         for n in all_ns:
             idx = n - 1
             if 0 <= idx < len(cited_sources):
@@ -2289,7 +2290,7 @@ class ChatService:
                 if tid:
                     talk_ids.append(tid)
 
-        full_texts: Dict[str, Dict[str, Any]] = {}
+        full_texts: dict[str, dict[str, Any]] = {}
         if talk_ids:
             try:
                 from postgres_client import pg as _pg
@@ -2321,7 +2322,7 @@ class ChatService:
             para_ns = sorted({n for w in para_warnings for n in w["cited_ns"]})
 
             # Build source blocks with full talk text where available.
-            source_blocks: List[str] = []
+            source_blocks: list[str] = []
             for n in para_ns:
                 idx = n - 1
                 if not (0 <= idx < len(cited_sources)):
@@ -2340,7 +2341,7 @@ class ChatService:
                         f"{(src.get('snippet') or '')[:_PER_SOURCE_CHARS]}"
                     )
 
-            mismatch_lines: List[str] = []
+            mismatch_lines: list[str] = []
             for w in para_warnings:
                 src_labels = []
                 for n in w["cited_ns"]:
@@ -2503,7 +2504,7 @@ class ChatService:
         self,
         text: str,
         language_llm_chain: list,
-        event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> str:
         """Polish Swedish language using the first available LLM in the fallback chain.
 
@@ -2589,10 +2590,10 @@ class ChatService:
     def _targeted_attribution_fix(
         self,
         answer_body: str,
-        warnings: List[Dict[str, Any]],
-        cited_sources: List[Dict[str, Any]],
+        warnings: list[dict[str, Any]],
+        cited_sources: list[dict[str, Any]],
         editor_llm,
-        event_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> str:
         """Fix paragraphs flagged by detect_attribution_warnings.
 
@@ -2613,7 +2614,7 @@ class ChatService:
         # Split the answer into paragraphs and build a map:
         #   cited_para_idx (index among paragraphs that have [N]) -> actual list index
         all_paras = answer_body.split("\n\n")
-        cited_to_actual: Dict[int, int] = {}
+        cited_to_actual: dict[int, int] = {}
         cited_idx = 0
         for actual_idx, para in enumerate(all_paras):
             if _cite_n_re.search(para):
@@ -2621,7 +2622,7 @@ class ChatService:
                 cited_idx += 1
 
         # Group warnings by paragraph_idx so we do one editor call per paragraph.
-        by_para: Dict[int, List[Dict[str, Any]]] = {}
+        by_para: dict[int, list[dict[str, Any]]] = {}
         for w in warnings:
             by_para.setdefault(w["paragraph_idx"], []).append(w)
 
@@ -2642,7 +2643,7 @@ class ChatService:
 
         # Pre-fetch full talk texts for all cited sources that appear in flagged paragraphs.
         all_ns: set = {n for ws in by_para.values() for w in ws for n in w["cited_ns"]}
-        talk_ids: List[str] = []
+        talk_ids: list[str] = []
         for n in all_ns:
             idx = n - 1
             if 0 <= idx < len(cited_sources):
@@ -2651,7 +2652,7 @@ class ChatService:
                 if tid:
                     talk_ids.append(tid)
 
-        full_texts: Dict[str, Dict[str, Any]] = {}
+        full_texts: dict[str, dict[str, Any]] = {}
         if talk_ids:
             try:
                 from postgres_client import pg as _pg
@@ -2680,7 +2681,7 @@ class ChatService:
             para_ns = sorted({n for w in para_warnings for n in w["cited_ns"]})
 
             # Build source blocks with full talk text where available.
-            source_blocks: List[str] = []
+            source_blocks: list[str] = []
             for n in para_ns:
                 idx = n - 1
                 if not (0 <= idx < len(cited_sources)):
@@ -2700,7 +2701,7 @@ class ChatService:
                     )
 
             # Describe each detected mismatch explicitly, including what the source actually says.
-            mismatch_lines: List[str] = []
+            mismatch_lines: list[str] = []
             for w in para_warnings:
                 src_labels = []
                 for n in w["cited_ns"]:
@@ -2840,9 +2841,9 @@ class ChatService:
         return default
 
     def _deduplicate_sources(
-        self, sources: List[ChatSource], limit: int
-    ) -> List[ChatSource]:
-        unique: Dict[tuple[Any, Any], ChatSource] = {}
+        self, sources: list[ChatSource], limit: int
+    ) -> list[ChatSource]:
+        unique: dict[tuple[Any, Any], ChatSource] = {}
         for source in sources:
             source_id = source.get("_id") or source.get("_id")
             chunk_index = self._normalize_chunk_index(source.get("chunk_index"))
@@ -2871,7 +2872,7 @@ class ChatService:
             return cleaned
         return f"{cleaned[:length].rstrip()}…"
 
-    def _get_unique_name_persons(self, persons: Dict[str, Dict]) -> Dict[str, Dict]:
+    def _get_unique_name_persons(self, persons: dict[str, dict]) -> dict[str, dict]:
         """
         Look up each collected person by person_id to get the canonical DB name,
         then keep only those whose name is unique in the people table.
@@ -2925,9 +2926,9 @@ class ChatService:
     def _inject_person_links(
         self,
         answer_text: str,
-        unique_persons: Dict[str, Dict],
-        cited_sources: Optional[List[Dict[str, Any]]] = None,
-    ) -> Tuple[List[Dict], str]:
+        unique_persons: dict[str, dict],
+        cited_sources: list[dict[str, Any]] | None = None,
+    ) -> tuple[list[dict], str]:
         """
         Inject markdown person links into the answer body for persons with unique names.
         First occurrence: [Name (Party)](/mp/person_id), subsequent: [Name](/mp/id).
@@ -2961,7 +2962,7 @@ class ChatService:
         from backend.services.attribution import paragraph_supports_name
 
         paragraphs = body.split("\n\n")
-        rebuilt: List[str] = []
+        rebuilt: list[str] = []
         for para in paragraphs:
             new_para = para
             for iid, info in unique_persons.items():

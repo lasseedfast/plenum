@@ -1,43 +1,43 @@
 from __future__ import annotations
 
 import json
-from typing import Literal, List, Optional
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from postgres_client import pg
 from backend.services.auth import get_current_user, get_optional_user
+from postgres_client import pg
 
 router = APIRouter(prefix="/api", tags=["sessions"])
 
 
 class SessionUpsertRequest(BaseModel):
     session_type: Literal["general", "mp"]
-    person_id: Optional[str] = None
-    initial_speech_id: Optional[str] = None
-    llm_messages: List[dict] = []
-    turns: List[dict] = []
-    focus_ids: List[str] = []
+    person_id: str | None = None
+    initial_speech_id: str | None = None
+    llm_messages: list[dict] = []
+    turns: list[dict] = []
+    focus_ids: list[str] = []
     # Owned sessions: all content (messages/turns/focus_ids AND the MP identity)
     # arrives as one client-encrypted blob; plaintext fields above stay empty.
-    enc_payload: Optional[str] = None
-    enc_title: Optional[str] = None
+    enc_payload: str | None = None
+    enc_title: str | None = None
 
 
 class SessionResponse(BaseModel):
     id: str
     session_type: str
-    person_id: Optional[str]
-    initial_speech_id: Optional[str]
-    llm_messages: List[dict]
-    turns: List[dict]
-    focus_ids: List[str]
-    enc_payload: Optional[str] = None
+    person_id: str | None
+    initial_speech_id: str | None
+    llm_messages: list[dict]
+    turns: list[dict]
+    focus_ids: list[str]
+    enc_payload: str | None = None
 
 
-def _session_owner(session_id: str) -> Optional[str]:
+def _session_owner(session_id: str) -> str | None:
     """user_id of an existing session ('' when unowned), None when missing."""
     rows = pg.execute(
         "SELECT user_id::text AS user_id FROM chat_sessions WHERE id = %s",
@@ -51,7 +51,7 @@ def _session_owner(session_id: str) -> Optional[str]:
 @router.get("/sessions/{session_id}", response_model=SessionResponse)
 def get_session(
     session_id: UUID,
-    user: Optional[dict] = Depends(get_optional_user),
+    user: dict | None = Depends(get_optional_user),
 ) -> SessionResponse:
     rows = pg.execute(
         """
@@ -88,7 +88,7 @@ def get_session(
 def upsert_session(
     session_id: UUID,
     payload: SessionUpsertRequest,
-    user: Optional[dict] = Depends(get_optional_user),
+    user: dict | None = Depends(get_optional_user),
 ) -> None:
     if payload.enc_payload is not None and user is None:
         raise HTTPException(status_code=401, detail="Inloggning krävs för krypterade sessioner")
@@ -165,13 +165,13 @@ def upsert_session(
 class MyChatRow(BaseModel):
     id: str
     session_type: str
-    enc_title: Optional[str]
+    enc_title: str | None
     created_at: str
     last_activity: str
 
 
-@router.get("/me/chats", response_model=List[MyChatRow])
-def list_my_chats(user: dict = Depends(get_current_user)) -> List[MyChatRow]:
+@router.get("/me/chats", response_model=list[MyChatRow])
+def list_my_chats(user: dict = Depends(get_current_user)) -> list[MyChatRow]:
     rows = pg.execute(
         """
         SELECT id::text, session_type, enc_title,
@@ -200,11 +200,11 @@ def delete_my_chat(session_id: UUID, user: dict = Depends(get_current_user)) -> 
 
 class SnapshotCreateRequest(BaseModel):
     session_type: Literal["general", "mp"]
-    person_id: Optional[str] = None
-    initial_speech_id: Optional[str] = None
-    llm_messages: List[dict] = []
-    turns: List[dict] = []
-    focus_ids: List[str] = []
+    person_id: str | None = None
+    initial_speech_id: str | None = None
+    llm_messages: list[dict] = []
+    turns: list[dict] = []
+    focus_ids: list[str] = []
 
 
 class SnapshotCreateResponse(BaseModel):
@@ -214,11 +214,11 @@ class SnapshotCreateResponse(BaseModel):
 class SnapshotResponse(BaseModel):
     id: str
     session_type: str
-    person_id: Optional[str]
-    initial_speech_id: Optional[str] = None
-    turns: List[dict]
-    llm_messages: List[dict] = []
-    focus_ids: List[str] = []
+    person_id: str | None
+    initial_speech_id: str | None = None
+    turns: list[dict]
+    llm_messages: list[dict] = []
+    focus_ids: list[str] = []
     created_at: str
 
 

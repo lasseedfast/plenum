@@ -12,7 +12,6 @@ from backend.services.streaming_answer import (
 )
 from packages.llm.client import StreamAccumulator
 
-
 # ---------------------------------------------------------------------------
 # _last_unmatched_bracket_start
 # ---------------------------------------------------------------------------

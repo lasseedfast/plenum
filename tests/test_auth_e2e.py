@@ -26,11 +26,11 @@ import uuid
 import requests
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from postgres_client import pg  # noqa: E402
-
 from cryptography.hazmat.primitives import hashes  # noqa: E402
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: E402
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF  # noqa: E402
+
+from postgres_client import pg  # noqa: E402
 
 KDF_ITERATIONS = 600_000
 PREFIX = "v1:"

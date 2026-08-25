@@ -14,29 +14,30 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402  — after sys.path setup above
+
 load_dotenv()
 
-from postgres_client import pg
+from postgres_client import pg  # noqa: E402
 
 
-def _latest_run_id() -> Optional[str]:
+def _latest_run_id() -> str | None:
     rows = pg.execute(
         "SELECT id::text FROM eval_runs ORDER BY started_at DESC LIMIT 1"
     )
     return rows[0]["id"] if rows else None
 
 
-def _fmt_row(row: Dict[str, Any], cols: List[str]) -> str:
+def _fmt_row(row: dict[str, Any], cols: list[str]) -> str:
     return " | ".join(f"{c}={row.get(c)}" for c in cols)
 
 
-def _print_rows(header: str, rows: List[Dict[str, Any]], cols: Optional[List[str]] = None) -> None:
+def _print_rows(header: str, rows: list[dict[str, Any]], cols: list[str] | None = None) -> None:
     print(f"\n--- {header} ---")
     if not rows:
         print("(no rows)")
@@ -236,7 +237,7 @@ def sample_wrong_speaker(run_id: str, limit: int = 3) -> None:
         print(f"    MISMATCH: {r['metadata_mismatch'] or '(none — judge-only catch)'}")
 
 
-def compare_runs(run_ids: List[str]) -> None:
+def compare_runs(run_ids: list[str]) -> None:
     placeholders = ", ".join(["%s"] * len(run_ids))
     rows = pg.execute(
         f"""SELECT j.verdict, q.run_id::text AS run_id, COUNT(*) AS n
@@ -254,7 +255,7 @@ def compare_runs(run_ids: List[str]) -> None:
     )
     labels = {r["id"]: r["label"] or r["id"][:8] for r in label_rows}
 
-    by_run: Dict[str, Dict[str, int]] = {rid: {} for rid in run_ids}
+    by_run: dict[str, dict[str, int]] = {rid: {} for rid in run_ids}
     for r in rows:
         by_run[r["run_id"]][r["verdict"]] = r["n"]
     verdicts = sorted({v for d in by_run.values() for v in d.keys()})

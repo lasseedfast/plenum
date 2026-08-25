@@ -7,15 +7,12 @@ needed to catch debates added by debates.py since the last run.
 Usage:
     python scripts/embed_debate_summaries.py
 """
-from pathlib import Path
-
 import logging
-import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
-
 from postgres_client import pg
 
 logging.basicConfig(
@@ -49,7 +46,7 @@ def embed_debate_summaries() -> int:
         batch = missing[i : i + EMBED_BATCH]
         texts = [row["summary"] for row in batch]
         embeddings = pg.make_embeddings(texts)
-        params = [(emb, row["debate"]) for row, emb in zip(batch, embeddings)]
+        params = [(emb, row["debate"]) for row, emb in zip(batch, embeddings, strict=False)]
         pg.execute_many(
             "UPDATE debates SET summary_embedding = %s WHERE debate = %s",
             params,

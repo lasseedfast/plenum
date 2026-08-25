@@ -12,16 +12,15 @@ Environment variables:
   PG_PASSWORD - Password
 """
 
-import threading
 import os
-from typing import Any, List, Optional
+import threading
 
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 from dotenv import load_dotenv
-from pgvector.psycopg2 import register_vector
 from openai import OpenAI
+from pgvector.psycopg2 import register_vector
 
 load_dotenv()
 
@@ -125,7 +124,7 @@ class Postgres:
     def _put_conn(self, conn):
         self.pool.putconn(conn)
 
-    def execute(self, query: str, params: Optional[tuple] = None) -> List[dict]:
+    def execute(self, query: str, params: tuple | None = None) -> list[dict]:
         """
         Execute a query and return all rows as a list of dicts.
         Use for SELECT queries.
@@ -144,7 +143,7 @@ class Postgres:
         finally:
             self._put_conn(conn)
 
-    def execute_readonly(self, query: str, params: Optional[tuple] = None) -> List[dict]:
+    def execute_readonly(self, query: str, params: tuple | None = None) -> list[dict]:
         """Run a query inside a read-only transaction.
 
         For SQL the application did not write — currently the `database_query` tool,
@@ -171,7 +170,7 @@ class Postgres:
         finally:
             self._put_conn(conn)
 
-    def execute_void(self, query: str, params: Optional[tuple] = None) -> None:
+    def execute_void(self, query: str, params: tuple | None = None) -> None:
         """
         Execute a query that returns no rows (INSERT/UPDATE/DELETE).
         """
@@ -186,7 +185,7 @@ class Postgres:
         finally:
             self._put_conn(conn)
 
-    def execute_many(self, query: str, params_list: List[tuple]) -> None:
+    def execute_many(self, query: str, params_list: list[tuple]) -> None:
         """
         Execute a query for each item in params_list (batch insert/update).
         Uses execute_batch for performance.
@@ -204,7 +203,7 @@ class Postgres:
         finally:
             self._put_conn(conn)
 
-    def execute_values(self, query: str, params_list: List[tuple], template: str = None) -> None:
+    def execute_values(self, query: str, params_list: list[tuple], template: str = None) -> None:
         """
         Bulk insert using execute_values (much faster than execute_many for large batches).
         query should be like: INSERT INTO table (col1, col2) VALUES %s
@@ -224,7 +223,7 @@ class Postgres:
         finally:
             self._put_conn(conn)
 
-    def make_embeddings(self, texts: List[str]) -> List[List[float]]:
+    def make_embeddings(self, texts: list[str]) -> list[list[float]]:
         # 1. Setup Client
         from parliament import PARLIAMENT
 
@@ -245,7 +244,7 @@ class Postgres:
         )
 
         # 3. Safety Slice
-        # Even if the server returns the full 3584 dims by mistake, 
+        # Even if the server returns the full 3584 dims by mistake,
         # this ensures your DB doesn't throw a dimension mismatch error.
         dim = PARLIAMENT.embeddings.dimension
         # Truncate defensively: not every server honours the `dimensions` request,

@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
@@ -27,7 +27,7 @@ _ROOT = Path(__file__).resolve().parent
 # Site copy — the explainer, the limit warning, the user guide. Overridable so a
 # deployment's own wording lives outside the repository, the same way PROMPTS_DIR
 # works for prompts.
-def _resolve_path(value: Optional[str], default: Path) -> Path:
+def _resolve_path(value: str | None, default: Path) -> Path:
     """Resolve a configured path, treating a relative one as repo-relative.
 
     Without this, `PARLIAMENT_CONFIG=parliament.no.yaml` works when you happen to be
@@ -119,15 +119,15 @@ class Parliament:
     def _by_code(self) -> dict[str, Party]:
         return {p.code: p for p in self.parties}
 
-    def party(self, code: Optional[str]) -> Optional[Party]:
+    def party(self, code: str | None) -> Party | None:
         return self._by_code.get((code or "").strip().upper())
 
-    def party_color(self, code: Optional[str]) -> str:
+    def party_color(self, code: str | None) -> str:
         """Colour for a party code, or the neutral colour for unknown/independent."""
         found = self.party(code)
         return found.color if found else self.party_defaults["unknown_color"]
 
-    def party_highlight_color(self, code: Optional[str], amount: float = 0.75) -> str:
+    def party_highlight_color(self, code: str | None, amount: float = 0.75) -> str:
         """A pale tint of the party colour, for text highlighting.
 
         Computed rather than configured — the predecessor kept a second
@@ -144,7 +144,7 @@ class Parliament:
     def party_codes(self) -> list[str]:
         return [p.code for p in self.parties if p.active]
 
-    def activity_title(self, code: Optional[str]) -> str:
+    def activity_title(self, code: str | None) -> str:
         return self.activity_types.get(code or "", {}).get("title", code or "")
 
     def person_photo_url(self, person_id: str) -> str:
@@ -203,7 +203,7 @@ def _require(data: dict, key: str) -> Any:
     return data[key]
 
 
-def load(path: Optional[Path] = None) -> Parliament:
+def load(path: Path | None = None) -> Parliament:
     """Read and validate a parliament configuration."""
     path = Path(path) if path else _resolve_path(
         os.environ.get("PARLIAMENT_CONFIG"), _ROOT / "parliament.yaml"

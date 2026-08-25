@@ -1,31 +1,25 @@
 from __future__ import annotations
 
-import asyncio
-import os
-from datetime import datetime
-
-import httpx
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
-from postgres_client import pg
 
-from parliament import PARLIAMENT
-from .schemas import (
-    ChatRequest,
-    ChatResponse,
-    FeedbackRequest,
-    FeedbackResponse,
-    SearchRequest,
-    SearchResponse,
-    TalkHit,
-)
-from .services import ChatService, SearchService
 from backend.routes.auth import router as auth_router
 from backend.routes.chat import router as chat_router
 from backend.routes.research import router as research_router
 from backend.routes.sessions import router as sessions_router
 from backend.routes.settings import router as settings_router
+from parliament import PARLIAMENT
+from postgres_client import pg
+
+from .schemas import (
+    ChatRequest,
+    ChatResponse,
+    SearchRequest,
+    SearchResponse,
+    TalkHit,
+)
+from .services import ChatService, SearchService
 from .services.names_autocomplete import router as names_autocomplete_router
 
 app = FastAPI(title="Riksdagen API", version="0.1.0")

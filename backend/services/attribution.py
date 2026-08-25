@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from parliament import PARLIAMENT
 
@@ -45,7 +45,7 @@ _PLAIN_SPEAKER_RE = re.compile(
 _CITATION_N_RE = re.compile(r"\[(\d+)\]")
 
 
-def _normalize(s: Optional[str]) -> str:
+def _normalize(s: str | None) -> str:
     if not s:
         return ""
     return unicodedata.normalize("NFKD", s).casefold().strip()
@@ -59,9 +59,9 @@ def _name_tokens_match(para_name: str, src_name: str) -> bool:
     return p in s or s in p
 
 
-def _split_paragraphs_with_offset(body: str) -> List[tuple[int, str]]:
+def _split_paragraphs_with_offset(body: str) -> list[tuple[int, str]]:
     """Return [(char_offset, paragraph_text), ...]. Skips the Källor section caller passes."""
-    paragraphs: List[tuple[int, str]] = []
+    paragraphs: list[tuple[int, str]] = []
     offset = 0
     for chunk in body.split("\n\n"):
         paragraphs.append((offset, chunk))
@@ -69,14 +69,14 @@ def _split_paragraphs_with_offset(body: str) -> List[tuple[int, str]]:
     return paragraphs
 
 
-def _cited_sources_in(paragraph: str, cited_sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _cited_sources_in(paragraph: str, cited_sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """For a paragraph, return the source dicts whose [N] appears inside it.
 
     `cited_sources` is 1-indexed: cited_sources[0] is `[1]`, etc. This matches what
     `parse_and_renumber_citations` produces.
     """
     ns = {int(m) for m in _CITATION_N_RE.findall(paragraph)}
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for n in ns:
         idx = n - 1
         if 0 <= idx < len(cited_sources):
@@ -87,7 +87,7 @@ def _cited_sources_in(paragraph: str, cited_sources: List[Dict[str, Any]]) -> Li
 def paragraph_supports_name(
     paragraph: str,
     name: str,
-    cited_sources: List[Dict[str, Any]],
+    cited_sources: list[dict[str, Any]],
 ) -> bool:
     """Does this paragraph have at least one [N] whose source speaker matches `name`?
 
@@ -104,8 +104,8 @@ def paragraph_supports_name(
 
 def detect_attribution_warnings(
     answer_body: str,
-    cited_sources: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    cited_sources: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Scan each paragraph and flag `Name (PARTY)` tokens with no matching cited source.
 
     Returns a list of warning dicts:
@@ -119,7 +119,7 @@ def detect_attribution_warnings(
 
     No mutation. The caller decides what to do (log, pass to editor, display a badge).
     """
-    warnings: List[Dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
     para_idx = 0
     for _, para in _split_paragraphs_with_offset(answer_body):
         ns = [int(m) for m in _CITATION_N_RE.findall(para)]
@@ -127,7 +127,7 @@ def detect_attribution_warnings(
             continue  # no citations, no attribution claim to verify
         srcs = [cited_sources[n - 1] for n in ns if 0 < n <= len(cited_sources)]
 
-        tokens: List[tuple[str, str]] = [
+        tokens: list[tuple[str, str]] = [
             (m.group(1), m.group(2)) for m in _SPEAKER_LINK_RE.finditer(para)
         ]
         # Also pick up plain "Name (PARTY)" mentions that haven't been wrapped yet.

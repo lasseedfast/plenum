@@ -12,14 +12,12 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
-
-from packages.llm import LLM
 
 from backend.services import llm_override
 from backend.services.research import board as board_mod
 from backend.services.research import synthesis
 from backend.services.research.jobs import JobContext, register
+from packages.llm import LLM
 
 log = logging.getLogger("riksdagen.research.handlers")
 
@@ -46,7 +44,7 @@ def _build_llms(params: dict):
     return llm_override.build_research_llms(override)
 
 
-def _clean_title(title: str) -> Optional[str]:
+def _clean_title(title: str) -> str | None:
     """A board title from the discovery pass, or None to keep the placeholder.
 
     Models like to answer a "max 60 chars" instruction with a sentence, so trim
@@ -250,7 +248,7 @@ def run_build(params: dict, ctx: JobContext) -> None:
         threads = board_mod.get_threads(board_id, key=ctx.board_key)
         hint_by_id = {}
         for t, seed in zip(
-            [t for t in threads if t["origin"] == "auto"], seeds.threads
+            [t for t in threads if t["origin"] == "auto"], seeds.threads, strict=False
         ):
             hint_by_id[t["id"]] = seed.hints
         target = int(board["target_depth"])

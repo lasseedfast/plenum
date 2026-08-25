@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -78,7 +77,7 @@ def _load() -> dict[str, ResolvedProvider]:
     return _registry
 
 
-def get_provider(provider_id: str) -> Optional[ResolvedProvider]:
+def get_provider(provider_id: str) -> ResolvedProvider | None:
     """Return the resolved provider config, or None if unknown."""
     return _load().get(provider_id)
 

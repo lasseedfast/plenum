@@ -1,14 +1,12 @@
 """Tests for the provenance registry and citation parsing system."""
 
-import pytest
 from backend.services.provenance import (
     ProvenanceRegistry,
     SourceRecord,
+    _trim_snippet,
     normalize_talk_id,
     parse_and_renumber_citations,
-    _trim_snippet,
 )
-
 
 # ---------------------------------------------------------------------------
 # normalize_talk_id

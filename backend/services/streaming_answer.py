@@ -23,13 +23,14 @@ as today.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
-from packages.llm import ChatCompletionMessage
 from backend.services.event_logger import log_error, log_event
 from backend.services.provenance import _SRC_PATTERN
+from packages.llm import ChatCompletionMessage
 
-EventCallback = Callable[[Dict[str, Any]], None]
+EventCallback = Callable[[dict[str, Any]], None]
 
 
 def strip_citation_markers(text: str) -> str:
@@ -68,7 +69,7 @@ class AnswerStreamFilter:
         self._armed = False
         self.flushed_any = False
 
-    def feed(self, text: str) -> Optional[str]:
+    def feed(self, text: str) -> str | None:
         """Add a raw content chunk; return text safe to forward live now, or None."""
         if not text:
             return None
@@ -83,7 +84,7 @@ class AnswerStreamFilter:
             self._buffer += text
         return self._release_safe_segment()
 
-    def flush_remainder(self) -> Optional[str]:
+    def flush_remainder(self) -> str | None:
         """Release whatever's still held back.
 
         Call once, after the final chunk of an iteration confirmed to be the
@@ -121,7 +122,7 @@ class AnswerStreamFilter:
                 return True
         return False
 
-    def _release_safe_segment(self) -> Optional[str]:
+    def _release_safe_segment(self) -> str | None:
         """Release ``self._buffer`` up to the start of any trailing, still-open
         bracket run — a citation marker's validity depends on characters that
         may not have arrived yet, so it (and its double-bracket partner, if
@@ -136,7 +137,7 @@ class AnswerStreamFilter:
         return piece or None
 
 
-def _first_sentence_boundary(text: str) -> Optional[int]:
+def _first_sentence_boundary(text: str) -> int | None:
     for i, ch in enumerate(text):
         if ch in ".!?" and i + 1 < len(text) and text[i + 1] in " \n":
             return i
@@ -166,9 +167,9 @@ def _last_unmatched_bracket_start(text: str) -> int:
 
 def run_streaming_iteration(
     llm,
-    gen_kwargs: Dict[str, Any],
-    event_callback: Optional[EventCallback],
-    iteration: Optional[int] = None,
+    gen_kwargs: dict[str, Any],
+    event_callback: EventCallback | None,
+    iteration: int | None = None,
 ) -> ChatCompletionMessage:
     """Run one tool-loop iteration with ``stream=True``, speculatively
     forwarding the final answer live as ``answer_delta`` SSE events.

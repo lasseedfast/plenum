@@ -1,5 +1,4 @@
 import re
-from typing import List, Tuple
 from dataclasses import dataclass
 
 
@@ -31,7 +30,7 @@ class TextChunker:
         description: str
         keep_separator: bool = True
 
-    def _detect_separators(self, text: str) -> List["TextChunker.SeparatorInfo"]:
+    def _detect_separators(self, text: str) -> list["TextChunker.SeparatorInfo"]:
         """
         Analyze the text and detect available separators with their priority.
         Returns a list of separators ordered by priority (best to worst).
@@ -146,7 +145,7 @@ class TextChunker:
 
         return separators
 
-    def _split_by_separator(self, text: str, separator_pattern: str) -> List[str]:
+    def _split_by_separator(self, text: str, separator_pattern: str) -> list[str]:
         """Split text by a separator pattern, preserving the separator."""
         if not text:
             return []
@@ -177,7 +176,7 @@ class TextChunker:
 
         return result
 
-    def _split_by_sentences(self, text: str) -> List[str]:
+    def _split_by_sentences(self, text: str) -> list[str]:
         """
         Split text into complete sentences, ensuring no mid-sentence breaks.
         Returns speech_chunks that respect sentence boundaries and tries to balance chunk sizes.
@@ -235,7 +234,7 @@ class TextChunker:
 
         return speech_chunks if speech_chunks else [text]
 
-    def _balance_sentence_chunks(self, sentences: List[str]) -> List[str]:
+    def _balance_sentence_chunks(self, sentences: list[str]) -> list[str]:
         """
         Distribute sentences across speech_chunks to minimize size variance.
         Uses a greedy approach that looks ahead to avoid tiny final speech_chunks.
@@ -293,7 +292,7 @@ class TextChunker:
 
         return speech_chunks
 
-    def _merge_small_chunks(self, speech_chunks: List[str]) -> List[str]:
+    def _merge_small_chunks(self, speech_chunks: list[str]) -> list[str]:
         """
         Merge speech_chunks that are smaller than the limit to optimize chunk sizes.
         Ensures the last chunk is not much smaller than the chunk_limit by merging it with the previous chunk if needed.
@@ -325,8 +324,8 @@ class TextChunker:
         return merged
 
     def _recursive_split(
-        self, text: str, separators: List[SeparatorInfo], separator_idx: int = 0
-    ) -> List[str]:
+        self, text: str, separators: list[SeparatorInfo], separator_idx: int = 0
+    ) -> list[str]:
         """
         Recursively split text using available separators until speech_chunks fit the limit.
         Always falls back to sentence-aware splitting to avoid mid-sentence breaks.
@@ -362,7 +361,7 @@ class TextChunker:
 
         return result
 
-    def chunk(self, text: str, verbose: bool = False, headings: str = "") -> List[str]:
+    def chunk(self, text: str, verbose: bool = False, headings: str = "") -> list[str]:
         """
         Chunk the text using automatically detected separators.
         Always splits on complete sentences.

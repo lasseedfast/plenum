@@ -24,7 +24,6 @@ import re
 import secrets
 import threading
 import time
-from typing import Optional
 
 import bcrypt
 from fastapi import Header, HTTPException, Request
@@ -81,7 +80,7 @@ _process_secret = secrets.token_bytes(32)
 
 def fake_kdf_salt(username: str) -> str:
     """A stable, plausible-looking salt for usernames that don't exist."""
-    digest = hmac.new(_prelogin_secret(), f"salt:{username}".encode("utf-8"), hashlib.sha256)
+    digest = hmac.new(_prelogin_secret(), f"salt:{username}".encode(), hashlib.sha256)
     return base64.b64encode(digest.digest()[:16]).decode("ascii")
 
 
@@ -115,7 +114,7 @@ def revoke_other_tokens(user_id: str, keep_token: str) -> None:
     )
 
 
-def verify_token(token: str) -> Optional[dict]:
+def verify_token(token: str) -> dict | None:
     """{"user_id", "username"} for a live token, else None. Slides expiry."""
     th = _token_hash(token)
     rows = pg.execute(
@@ -149,7 +148,7 @@ def verify_token(token: str) -> Optional[dict]:
 # ── FastAPI dependencies ─────────────────────────────────────────────────────
 
 
-def get_optional_user(authorization: Optional[str] = Header(default=None)) -> Optional[dict]:
+def get_optional_user(authorization: str | None = Header(default=None)) -> dict | None:
     if not authorization or not authorization.startswith("Bearer "):
         return None
     token = authorization[len("Bearer "):].strip()
@@ -158,14 +157,14 @@ def get_optional_user(authorization: Optional[str] = Header(default=None)) -> Op
     return verify_token(token)
 
 
-def get_current_user(authorization: Optional[str] = Header(default=None)) -> dict:
+def get_current_user(authorization: str | None = Header(default=None)) -> dict:
     user = get_optional_user(authorization)
     if user is None:
         raise HTTPException(status_code=401, detail="Inloggning krävs")
     return user
 
 
-def bearer_token(authorization: Optional[str] = Header(default=None)) -> Optional[str]:
+def bearer_token(authorization: str | None = Header(default=None)) -> str | None:
     if not authorization or not authorization.startswith("Bearer "):
         return None
     return authorization[len("Bearer "):].strip() or None

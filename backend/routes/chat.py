@@ -1,6 +1,7 @@
-from typing import Literal, List, Generator, Optional
 import json
 import threading
+from collections.abc import Generator
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -19,9 +20,9 @@ class ChatMessage(BaseModel):
     content: str = Field(..., min_length=1)
 
 class ChatRequest(BaseModel):
-    messages: List[ChatMessage]
+    messages: list[ChatMessage]
     top_k: int = Field(default=5, ge=1, le=10)
-    focus_ids: List[str] | None = Field(default=None, description="Optional ids from previously shared results.")
+    focus_ids: list[str] | None = Field(default=None, description="Optional ids from previously shared results.")
     provider_override: ProviderOverride | None = Field(default=None, description="Optional user-supplied provider.")
     use_editor: bool = Field(default=False, description="Run the editor pass (fact-check + language polish) before returning.")
     quick: bool = Field(default=False, description="Skip the planner/Researcher pre-pass and let the orchestrator answer directly. Faster, less thorough.")
@@ -48,17 +49,17 @@ class AttributionWarning(BaseModel):
     paragraph_idx: int
     name: str
     party: str
-    cited_ns: List[int] = Field(default_factory=list)
+    cited_ns: list[int] = Field(default_factory=list)
     reason: str
 
 
 class ChatResponse(BaseModel):
     answer: str
-    sources: List[ChatSource]
-    persons: List[PersonRef] = Field(default_factory=list)
-    tables: List[dict] = Field(default_factory=list)
-    focus_ids: List[str] = Field(default_factory=list)
-    attribution_warnings: List[AttributionWarning] = Field(default_factory=list)
+    sources: list[ChatSource]
+    persons: list[PersonRef] = Field(default_factory=list)
+    tables: list[dict] = Field(default_factory=list)
+    focus_ids: list[str] = Field(default_factory=list)
+    attribution_warnings: list[AttributionWarning] = Field(default_factory=list)
 
 # Instantiate the chat service once (can be reused for all requests)
 chat_service = ChatService()
@@ -87,13 +88,13 @@ def chat_endpoint(payload: ChatRequest, request: Request) -> ChatResponse:
             session_id=payload.session_id or request.headers.get("X-Session-Id"),
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         import traceback
         print("UNHANDLED ERROR in chat_endpoint:", e)
         traceback.print_exc()
         log_error("http_500", e, route="/api/chat")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}") from e
     raw_answer = result.get("answer", "")
     if not isinstance(raw_answer, str):
         raw_answer = str(raw_answer)
@@ -153,7 +154,6 @@ def chat_stream_endpoint(payload: ChatRequest, request: Request) -> StreamingRes
         # data arrives. By sending a ": keepalive\n\n" comment every 5 seconds
         # we force buffer flushes so progress hints reach the browser in real-time.
         import queue as _queue
-        import time as _time
 
         done_event = threading.Event()
         pipe: _queue.Queue[str] = _queue.Queue()
@@ -222,6 +222,7 @@ def list_provider_models(provider_id: str, request: Request) -> dict:
     The key must be passed in the X-Provider-Key header — it is never logged or stored.
     """
     import requests as _requests
+
     from backend.services.provider_registry import get_provider
 
     provider = get_provider(provider_id)
@@ -247,7 +248,7 @@ def list_provider_models(provider_id: str, request: Request) -> dict:
             timeout=10,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Could not reach provider: {exc}")
+        raise HTTPException(status_code=502, detail=f"Could not reach provider: {exc}") from exc
 
     if not resp.ok:
         raise HTTPException(status_code=resp.status_code, detail=f"Provider error: {resp.text[:200]}")
@@ -314,9 +315,9 @@ def get_person(person_id: str) -> PersonDetail:
 
 
 class MpChatRequest(BaseModel):
-    messages: List[ChatMessage]
+    messages: list[ChatMessage]
     person_id: str
-    initial_speech_id: Optional[str] = None
+    initial_speech_id: str | None = None
     provider_override: ProviderOverride | None = Field(default=None, description="Optional user-supplied provider.")
 
 
@@ -340,7 +341,7 @@ def mp_chat_stream_endpoint(payload: MpChatRequest) -> StreamingResponse:
         # Same exception type covers "no such person" and "no such provider";
         # only the former should read as a missing resource.
         status = 400 if "provider" in str(e).lower() else 404
-        raise HTTPException(status_code=status, detail=str(e))
+        raise HTTPException(status_code=status, detail=str(e)) from e
 
     messages = [msg.model_dump() for msg in payload.messages]
 

@@ -1,9 +1,10 @@
 from fastmcp import FastMCP
+
 from backend.services.llm_tools import (
-    search_speeches,
     database_query,
     fetch_debate,
     fetch_speeches,
+    search_speeches,
     vector_search,
     vector_search_debates,
 )

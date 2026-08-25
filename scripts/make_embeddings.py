@@ -13,22 +13,18 @@ The search_vector column on speeches is kept in sync by a trigger – no manual 
 Usage:
   python scripts/make_embeddings.py
 """
-from pathlib import Path
-
 import logging
-import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List
+from pathlib import Path
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import bootstrap  # noqa: E402,F401  — sets cwd and sys.path to the project root
-
-from parliament import PARLIAMENT
-from postgres_client import pg
-from utils import TextChunker
+from parliament import PARLIAMENT  # noqa: E402
+from postgres_client import pg  # noqa: E402
+from utils import TextChunker  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,13 +38,13 @@ MAX_WORKERS = 3
 INSERT_BATCH = 100
 
 
-def _make_embeddings(texts: List[str]) -> List[List[float]]:
+def _make_embeddings(texts: list[str]) -> list[list[float]]:
     # OpenAI-compatible vLLM endpoint (VLLM_EMBEDDING_HOST/LLM_MODEL_EMBEDDING),
     # same as query-time embeddings — keeps documents and queries in one space.
     return pg.make_embeddings(texts)
 
 
-def _embed_batch(chunk_batch: List[Dict]) -> List[Dict]:
+def _embed_batch(chunk_batch: list[dict]) -> list[dict]:
     """Embed a batch of chunk dicts (adds 'embedding' field)."""
     texts = [c["text"] for c in chunk_batch]
     embeddings = _make_embeddings(texts)
@@ -57,9 +53,9 @@ def _embed_batch(chunk_batch: List[Dict]) -> List[Dict]:
     return chunk_batch
 
 
-def _chunk_docs(missing: List[Dict], text_key: str, parent_key: str) -> List[List[Dict]]:
+def _chunk_docs(missing: list[dict], text_key: str, parent_key: str) -> list[list[dict]]:
     """Split docs into chunk dicts and group them into embed batches."""
-    all_batches: List[List[Dict]] = []
+    all_batches: list[list[dict]] = []
     for doc in missing:
         doc_id = doc["id"]
         text = (doc.get(text_key) or "").strip()
@@ -83,7 +79,7 @@ def _chunk_docs(missing: List[Dict], text_key: str, parent_key: str) -> List[Lis
     return all_batches
 
 
-def _embed_and_insert(all_batches: List[List[Dict]], insert_sql: str, parent_key: str) -> int:
+def _embed_and_insert(all_batches: list[list[dict]], insert_sql: str, parent_key: str) -> int:
     """Embed all batches in parallel and bulk-insert the chunk rows."""
     if not all_batches:
         logger.info("No speech_chunks to embed.")
@@ -91,14 +87,14 @@ def _embed_and_insert(all_batches: List[List[Dict]], insert_sql: str, parent_key
 
     logger.info(f"Embedding {len(all_batches)} batches via Ollama …")
 
-    def _rows(speech_chunks: List[Dict]) -> List[tuple]:
+    def _rows(speech_chunks: list[dict]) -> list[tuple]:
         return [
             (c["id"], c[parent_key], c["chunk_index"], c["text"], c["embedding"])
             for c in speech_chunks
         ]
 
     total_inserted = 0
-    pending: List[Dict] = []
+    pending: list[dict] = []
     completed = 0
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -214,7 +210,7 @@ def make_yrkande_embeddings(limit: int | None = None) -> int:
     UPDATE_SQL = "UPDATE document_proposals SET embedding = %s WHERE id = %s"
 
     total = 0
-    pending: List[Dict] = []
+    pending: list[dict] = []
     completed = 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = [executor.submit(_embed_batch, batch) for batch in batches]

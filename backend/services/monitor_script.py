@@ -14,11 +14,11 @@ This script monitors:
 Run continuously to capture when the system becomes unreachable.
 """
 
-import psutil
-import time
 import logging
-from datetime import datetime
+import time
 from pathlib import Path
+
+import psutil
 
 # Setup logging to file with rotation
 log_file = Path("/var/log/system_monitor.log")
@@ -34,7 +34,7 @@ logging.basicConfig(
 def check_ssh_service() -> dict:
     """
     Check if SSH service is running.
-    
+
     Returns:
         dict: Service status information
     """
@@ -56,30 +56,30 @@ def check_ssh_service() -> dict:
 def get_system_stats() -> dict:
     """
     Collect current system statistics.
-    
+
     Returns:
         dict: System statistics including CPU, memory, disk, network
     """
     # CPU usage
     cpu_percent = psutil.cpu_percent(interval=1)
     cpu_count = psutil.cpu_count()
-    
+
     # Memory usage
     memory = psutil.virtual_memory()
     swap = psutil.swap_memory()
-    
+
     # Disk usage
     disk = psutil.disk_usage('/')
-    
+
     # Network stats
     net_io = psutil.net_io_counters()
-    
+
     # System load (1, 5, 15 minute averages)
     load_avg = psutil.getloadavg()
-    
+
     # Number of connections
     connections = len(psutil.net_connections())
-    
+
     return {
         'cpu_percent': cpu_percent,
         'cpu_count': cpu_count,
@@ -99,17 +99,17 @@ def get_system_stats() -> dict:
 def monitor_loop(interval_seconds: int = 60):
     """
     Main monitoring loop that logs system stats at regular intervals.
-    
+
     Args:
         interval_seconds: How often to log stats (default: 60 seconds)
     """
     logging.info("Starting system monitoring...")
-    
+
     while True:
         try:
             stats = get_system_stats()
             ssh_status = check_ssh_service()
-            
+
             # Log current stats
             log_message = (
                 f"CPU: {stats['cpu_percent']:.1f}% | "
@@ -119,7 +119,7 @@ def monitor_loop(interval_seconds: int = 60):
                 f"CONN: {stats['connections']} | "
                 f"SSH: {ssh_status.get('status', 'unknown')}"
             )
-            
+
             # Warning thresholds
             if stats['cpu_percent'] > 90:
                 logging.warning(f"HIGH CPU! {log_message}")
@@ -133,9 +133,9 @@ def monitor_loop(interval_seconds: int = 60):
                 logging.error(f"SSH SERVICE DOWN! {log_message}")
             else:
                 logging.info(log_message)
-            
+
             time.sleep(interval_seconds)
-            
+
         except Exception as e:
             logging.error(f"Error in monitoring loop: {e}")
             time.sleep(interval_seconds)

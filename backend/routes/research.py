@@ -21,7 +21,6 @@ from __future__ import annotations
 import base64
 import os
 import time
-from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -30,7 +29,8 @@ from pydantic import BaseModel, Field
 # Importing handlers populates the job registry (register() side effects).
 import backend.services.research.handlers  # noqa: F401
 from backend.services.auth import get_optional_user
-from backend.services.llm_override import ProviderOverride, resolve as resolve_provider
+from backend.services.llm_override import ProviderOverride
+from backend.services.llm_override import resolve as resolve_provider
 from backend.services.research import board as board_mod
 from backend.services.research import jobs
 
@@ -43,8 +43,8 @@ RESEARCH_MAX_RUNNING_JOBS = int(os.getenv("RESEARCH_MAX_RUNNING_JOBS", "1"))
 RESEARCH_MAX_BYO_JOBS_PER_OWNER = int(os.getenv("RESEARCH_MAX_BYO_JOBS_PER_OWNER", "2"))
 
 
-def _require_owner(board_id: str, session: Optional[str],
-                   user: Optional[dict] = None) -> dict:
+def _require_owner(board_id: str, session: str | None,
+                   user: dict | None = None) -> dict:
     """404 unless the board exists AND belongs to the caller. Returns the
     board's {"owner_session", "user_id"} so callers can budget jobs per owner.
 
@@ -65,7 +65,7 @@ def _require_owner(board_id: str, session: Optional[str],
     return access
 
 
-def _board_key_bytes(board_id: str, board_key: Optional[str]) -> Optional[bytes]:
+def _board_key_bytes(board_id: str, board_key: str | None) -> bytes | None:
     """Raw board key for an encrypted board; None for plaintext boards.
     400s when the key is missing/garbled — content writes must never fall back
     to plaintext on an encrypted board."""
@@ -99,7 +99,7 @@ def _maybe_reap() -> None:
         pass
 
 
-def _check_llm(llm: Optional[ProviderOverride]) -> None:
+def _check_llm(llm: ProviderOverride | None) -> None:
     """400 on an unknown provider, at request time.
 
     A bad override must not cost the user a job that only fails half a minute
@@ -110,11 +110,11 @@ def _check_llm(llm: Optional[ProviderOverride]) -> None:
     try:
         resolve_provider(llm)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _spawn_secrets(board_key: Optional[str], llm: Optional[ProviderOverride],
-                   **extra) -> Optional[dict]:
+def _spawn_secrets(board_key: str | None, llm: ProviderOverride | None,
+                   **extra) -> dict | None:
     """Job inputs that must never reach the persisted ``jobs.params`` column.
 
     ``board_key`` is popped by execute_spec; everything else is merged into the
@@ -131,14 +131,14 @@ def _spawn_secrets(board_key: Optional[str], llm: Optional[ProviderOverride],
     return secrets or None
 
 
-def _byo_params(llm: Optional[ProviderOverride]) -> dict:
+def _byo_params(llm: ProviderOverride | None) -> dict:
     """The persisted half of an override: a flag, never the key or the models.
     Lets the job cap tell whose tokens a running job is spending."""
     return {"byo": True} if llm is not None else {}
 
 
-def _has_job_slot(llm: Optional[ProviderOverride],
-                  access: Optional[dict] = None) -> bool:
+def _has_job_slot(llm: ProviderOverride | None,
+                  access: dict | None = None) -> bool:
     """Is there room to start a job right now?
 
     Jobs on a user's own key spend no server tokens, so they are budgeted per
@@ -153,9 +153,9 @@ def _has_job_slot(llm: Optional[ProviderOverride],
     return jobs.count_running_jobs(server_key_only=True) < RESEARCH_MAX_RUNNING_JOBS
 
 
-def _guard_spawn(board_id: Optional[str] = None,
-                 llm: Optional[ProviderOverride] = None,
-                 access: Optional[dict] = None) -> None:
+def _guard_spawn(board_id: str | None = None,
+                 llm: ProviderOverride | None = None,
+                 access: dict | None = None) -> None:
     if board_id and jobs.running_job_for_board(board_id):
         raise HTTPException(status_code=409, detail="Ett jobb kör redan för denna research")
     if _has_job_slot(llm, access):
@@ -170,52 +170,52 @@ def _guard_spawn(board_id: Optional[str] = None,
 
 class CreateBoardRequest(BaseModel):
     topic: str = Field(..., min_length=3, max_length=2000)
-    title: Optional[str] = None
+    title: str | None = None
     # Logged-in users: raw per-board key (base64, 32 bytes) + the same key
     # wrapped by the user's DEK. The raw key is used transiently and forwarded
     # to the job via stdin; only the wrapped copy is stored.
-    board_key: Optional[str] = None
-    wrapped_board_key: Optional[str] = None
+    board_key: str | None = None
+    wrapped_board_key: str | None = None
     # Optional user-supplied provider. Rides the secrets channel; see _spawn_secrets.
-    llm: Optional[ProviderOverride] = None
+    llm: ProviderOverride | None = None
 
 
 class SeedThreadRequest(BaseModel):
     text: str = Field(..., min_length=3, max_length=2000)
-    board_key: Optional[str] = None
-    llm: Optional[ProviderOverride] = None
+    board_key: str | None = None
+    llm: ProviderOverride | None = None
 
 
 class DeepenRequest(BaseModel):
-    thread_id: Optional[str] = None
-    lead: Optional[dict] = None
+    thread_id: str | None = None
+    lead: dict | None = None
     sweep: bool = False
-    board_key: Optional[str] = None
-    llm: Optional[ProviderOverride] = None
+    board_key: str | None = None
+    llm: ProviderOverride | None = None
 
 
 class ThreadSelection(BaseModel):
     thread_id: str
-    guidance: Optional[str] = Field(default=None, max_length=2000)
+    guidance: str | None = Field(default=None, max_length=2000)
 
 
 class ActivateThreadsRequest(BaseModel):
-    selections: List[ThreadSelection] = Field(..., min_length=1, max_length=20)
+    selections: list[ThreadSelection] = Field(..., min_length=1, max_length=20)
     dig: bool = True
-    board_key: Optional[str] = None
-    llm: Optional[ProviderOverride] = None
+    board_key: str | None = None
+    llm: ProviderOverride | None = None
 
 
 class ReportRequest(BaseModel):
-    board_key: Optional[str] = None
-    llm: Optional[ProviderOverride] = None
+    board_key: str | None = None
+    llm: ProviderOverride | None = None
 
 
 @router.post("/research")
 def create_research(
     payload: CreateBoardRequest,
-    x_session_id: Optional[str] = Header(default=None),
-    user: Optional[dict] = Depends(get_optional_user),
+    x_session_id: str | None = Header(default=None),
+    user: dict | None = Depends(get_optional_user),
 ) -> dict:
     """Create a board and start the scout job: a few grounding search rounds,
     then thread proposals. Digging waits for the user's selection
@@ -224,9 +224,9 @@ def create_research(
         raise HTTPException(status_code=400, detail="Saknar sessions-id")
     _check_llm(payload.llm)
 
-    key: Optional[bytes] = None
-    user_id: Optional[str] = None
-    owner_session: Optional[str] = x_session_id
+    key: bytes | None = None
+    user_id: str | None = None
+    owner_session: str | None = x_session_id
     if user is not None and payload.board_key:
         if not payload.wrapped_board_key:
             raise HTTPException(status_code=400, detail="Saknar wrapped_board_key")
@@ -260,9 +260,9 @@ def create_research(
 
 @router.get("/research")
 def list_research(
-    x_session_id: Optional[str] = Header(default=None),
-    user: Optional[dict] = Depends(get_optional_user),
-) -> List[dict]:
+    x_session_id: str | None = Header(default=None),
+    user: dict | None = Depends(get_optional_user),
+) -> list[dict]:
     _maybe_reap()
     return board_mod.list_boards(
         owner_session=x_session_id,
@@ -273,8 +273,8 @@ def list_research(
 @router.get("/research/{board_id}")
 def get_research(
     board_id: UUID,
-    x_session_id: Optional[str] = Header(default=None),
-    user: Optional[dict] = Depends(get_optional_user),
+    x_session_id: str | None = Header(default=None),
+    user: dict | None = Depends(get_optional_user),
 ) -> dict:
     """The poll target: board + threads + the running job (if any).
     Encrypted boards are served as stored (ciphertext); the client decrypts."""
@@ -293,8 +293,8 @@ def get_research_events(
     board_id: UUID,
     job_id: str,
     offset: int = 0,
-    x_session_id: Optional[str] = Header(default=None),
-    user: Optional[dict] = Depends(get_optional_user),
+    x_session_id: str | None = Header(default=None),
+    user: dict | None = Depends(get_optional_user),
 ) -> dict:
     """Incremental activity ticker for a running job."""
     _require_owner(str(board_id), x_session_id, user)
@@ -305,8 +305,8 @@ def get_research_events(
 def seed_thread(
     board_id: UUID,
     payload: SeedThreadRequest,
-    x_session_id: Optional[str] = Header(default=None),
-    user: Optional[dict] = Depends(get_optional_user),
+    x_session_id: str | None = Header(default=None),
+    user: dict | None = Depends(get_optional_user),
 ) -> dict:
     """Add a user-seeded thread. Instant INSERT; if no job is running, spawn a
     deepen job so the thread gets researched right away. If a dig is already
@@ -332,8 +332,8 @@ def seed_thread(
 def deepen_research(
     board_id: UUID,
     payload: DeepenRequest,
-    x_session_id: Optional[str] = Header(default=None),
-    user: Optional[dict] = Depends(get_optional_user),
+    x_session_id: str | None = Header(default=None),
+    user: dict | None = Depends(get_optional_user),
 ) -> dict:
     """Spawn a deepen job: one targeted trip (thread/lead) and/or a sweep."""
     access = _require_owner(str(board_id), x_session_id, user)
@@ -369,8 +369,8 @@ def deepen_research(
 def activate_threads(
     board_id: UUID,
     payload: ActivateThreadsRequest,
-    x_session_id: Optional[str] = Header(default=None),
-    user: Optional[dict] = Depends(get_optional_user),
+    x_session_id: str | None = Header(default=None),
+    user: dict | None = Depends(get_optional_user),
 ) -> dict:
     """Approve proposed threads (optionally with per-thread guidance) and, by
     default, dig them: a sweep picks up the newly activated depth-0 threads
@@ -383,7 +383,7 @@ def activate_threads(
     if payload.dig:
         _guard_spawn(str(board_id), payload.llm, access)
 
-    activated: List[str] = []
+    activated: list[str] = []
     for sel in payload.selections:
         guidance = " ".join((sel.guidance or "").split()).strip() or None
         if board_mod.activate_thread(sel.thread_id, str(board_id), guidance=guidance, key=key):
@@ -411,8 +411,8 @@ def activate_threads(
 def archive_thread(
     board_id: UUID,
     thread_id: UUID,
-    x_session_id: Optional[str] = Header(default=None),
-    user: Optional[dict] = Depends(get_optional_user),
+    x_session_id: str | None = Header(default=None),
+    user: dict | None = Depends(get_optional_user),
 ) -> dict:
     """Dismiss a thread (typically an unwanted proposal). Status-only write —
     no board key needed; the row is kept, just hidden."""
@@ -424,8 +424,8 @@ def archive_thread(
 def generate_report(
     board_id: UUID,
     payload: ReportRequest,
-    x_session_id: Optional[str] = Header(default=None),
-    user: Optional[dict] = Depends(get_optional_user),
+    x_session_id: str | None = Header(default=None),
+    user: dict | None = Depends(get_optional_user),
 ) -> dict:
     """Write (or rewrite) the single board report from the thread answers."""
     access = _require_owner(str(board_id), x_session_id, user)
@@ -448,8 +448,8 @@ def generate_report(
 @router.post("/research/{board_id}/cancel")
 def cancel_research(
     board_id: UUID,
-    x_session_id: Optional[str] = Header(default=None),
-    user: Optional[dict] = Depends(get_optional_user),
+    x_session_id: str | None = Header(default=None),
+    user: dict | None = Depends(get_optional_user),
 ) -> dict:
     _require_owner(str(board_id), x_session_id, user)
     job = jobs.running_job_for_board(str(board_id))
@@ -462,8 +462,8 @@ def cancel_research(
 @router.delete("/research/{board_id}", status_code=204)
 def delete_research(
     board_id: UUID,
-    x_session_id: Optional[str] = Header(default=None),
-    user: Optional[dict] = Depends(get_optional_user),
+    x_session_id: str | None = Header(default=None),
+    user: dict | None = Depends(get_optional_user),
 ) -> None:
     _require_owner(str(board_id), x_session_id, user)
     job = jobs.running_job_for_board(str(board_id))

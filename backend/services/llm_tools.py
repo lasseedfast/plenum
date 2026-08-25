@@ -18,18 +18,18 @@ Surface exposed to the orchestrator LLM:
 import json
 import os
 import re
+import re as _re_guard
 import time  # Add this import for timing
 from contextvars import ContextVar
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any
 
-import psycopg2.extras
-from packages.colorprinter import *
-from pgvector.psycopg2 import register_vector
 from pydantic import BaseModel, Field
 
-import re as _re_guard
-
-from packages.llm import LLM, get_tools, register_tool
+from backend.services.search import MotionSearchService, SearchService
+from packages.colorprinter import *
+from packages.llm import LLM, register_tool
+from postgres_client import pg
+from prompts_loader import load_prompt
 
 # Statements the model is allowed to run. Anything else is refused before it
 # reaches the database.
@@ -62,11 +62,6 @@ def _reject_unsafe_sql(sql: str) -> str | None:
         )
     return None
 
-from backend.services.search import MotionSearchService, SearchService
-from postgres_client import pg
-from prompts_loader import load_prompt
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Data models
 # ─────────────────────────────────────────────────────────────────────────────
@@ -74,20 +69,20 @@ from prompts_loader import load_prompt
 class HitDocument(BaseModel):
     """Normalized representation of a search hit across tools."""
 
-    id: Optional[str] = Field(default=None, description="Document id (e.g. 'speeches/H40911')")
-    key: Optional[str] = Field(default=None, description="Document key without collection prefix.")
-    speaker: Optional[str] = Field(default=None)
-    party: Optional[str] = Field(default=None)
-    date: Optional[str] = Field(default=None)
-    snippet: Optional[str] = Field(default=None)
-    text: Optional[str] = Field(default=None)
-    score: Optional[float] = Field(default=None)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    id: str | None = Field(default=None, description="Document id (e.g. 'speeches/H40911')")
+    key: str | None = Field(default=None, description="Document key without collection prefix.")
+    speaker: str | None = Field(default=None)
+    party: str | None = Field(default=None)
+    date: str | None = Field(default=None)
+    snippet: str | None = Field(default=None)
+    text: str | None = Field(default=None)
+    score: float | None = Field(default=None)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     def to_string(self, include_metadata: bool = True) -> str:
-        data: Dict[str, Any] = self.model_dump(exclude_none=True)
-        metadata: Dict[str, Any] = data.pop("metadata", {})
-        segments: List[str] = []
+        data: dict[str, Any] = self.model_dump(exclude_none=True)
+        metadata: dict[str, Any] = data.pop("metadata", {})
+        segments: list[str] = []
         # Prepend source tag for citation tracking
         bare_id = self.key or (self.id.split("/", 1)[1] if self.id and "/" in self.id else self.id)
         if bare_id:
@@ -101,9 +96,9 @@ class HitDocument(BaseModel):
 
 def _format_src_tag(
     bare_id: str,
-    speaker: Optional[str] = None,
-    party: Optional[str] = None,
-    date: Optional[str] = None,
+    speaker: str | None = None,
+    party: str | None = None,
+    date: str | None = None,
 ) -> str:
     """Return an enriched [src:...] tag that carries speaker/party/date inline.
 
@@ -122,7 +117,7 @@ def _format_src_tag(
 
 
 class HitsResponse(BaseModel):
-    hits: List[HitDocument] = Field(default_factory=list)
+    hits: list[HitDocument] = Field(default_factory=list)
 
     def to_string(self, include_metadata: bool = True) -> str:
         if not self.hits:
@@ -136,8 +131,8 @@ class SearchHitsResult(BaseModel):
     """Returned by search_speeches. Wraps HitsResponse with search metadata."""
     type: str = "hits"
     response: HitsResponse
-    stats: Dict[str, Any] = Field(default_factory=dict)
-    focus_ids: List[str] = Field(default_factory=list)
+    stats: dict[str, Any] = Field(default_factory=dict)
+    focus_ids: list[str] = Field(default_factory=list)
     limit_reached: bool = False
 
 
@@ -145,7 +140,7 @@ class SearchHitsResult(BaseModel):
 # The @register_tool() wrapper JSON-serialises the return value, so tools that
 # want to hand structured data to ChatService store it here and return a plain
 # string to the framework.  ChatService reads this var immediately after the call.
-_tool_structured_result: ContextVar[Optional[Any]] = ContextVar(
+_tool_structured_result: ContextVar[Any | None] = ContextVar(
     "_tool_structured_result", default=None
 )
 
@@ -153,21 +148,21 @@ _tool_structured_result: ContextVar[Optional[Any]] = ContextVar(
 # a value. Set by the shadow communicator thread before calling share_insight.
 # Using a ContextVar means each thread has its own copy, so threads don't
 # interfere with each other.
-_insight_callback: ContextVar[Optional[Any]] = ContextVar(
+_insight_callback: ContextVar[Any | None] = ContextVar(
     "_insight_callback", default=None
 )
 
 # Active provenance registry for the current chat turn. Set by ChatService
 # before tool execution so tools (and `lookup_source` in particular) can read
 # back grounding text by source ID without going through the message history.
-_provenance_registry: ContextVar[Optional[Any]] = ContextVar(
+_provenance_registry: ContextVar[Any | None] = ContextVar(
     "_provenance_registry", default=None
 )
 
 # Fast LLM for the current request. Set by ChatService next to the provenance
 # registry so the reader sub-agent (`read_documents_for`) honours per-request
 # provider overrides without the user's key ever being stored module-side.
-_fast_llm_var: ContextVar[Optional[Any]] = ContextVar(
+_fast_llm_var: ContextVar[Any | None] = ContextVar(
     "_fast_llm_var", default=None
 )
 
@@ -182,26 +177,26 @@ def database_query(sql: str) -> str:
 
     Args:
         sql: A PostgreSQL SELECT query string.
-    
+
     Returns:
         Query result formatted as a string (raw result or error message).
-    
+
     Use this tool for structured queries on metadata: party breakdowns, aggregations,
     speaker statistics, and comparisons. Not for fuzzy/semantic search (use vector_search
     or search_speeches instead).
-    
+
     ✅ WHEN TO USE:
     - Counting or ranking: "how many speeches per party?", "top 10 speakers by year?"
     - Aggregations: votes per party, speeches over time periods, joins with demographics
     - Full-text aggregations: "how many speeches per party mentioned AI?" (using FTS)
-    
+
     ❌ WHEN NOT TO USE:
     - Semantic/conceptual search → use vector_search
     - Exact phrase or keyword search → use search_speeches
     - Fetching full documents → use fetch_speeches
-    
+
     DATABASE SCHEMA:
-    
+
     speeches table:
       id (TEXT)              - Speech ID (e.g. 'H40911-1')
       speaker_name (TEXT)          - Speaker name
@@ -218,7 +213,7 @@ def database_query(sql: str) -> str:
       tags (TEXT[])          - Tagged topics
       related_doc_id (TEXT)      - Related document ID
       title (TEXT)           - Speech title
-    
+
     people table:
       person_id (TEXT)   - Speaker ID (join key to speeches)
       name (TEXT)            - Canonical speaker name
@@ -279,27 +274,27 @@ def database_query(sql: str) -> str:
         SELECT a.party, COUNT(*) total, COUNT(b.id) matches FROM a LEFT JOIN b USING(id) GROUP BY 1
     - Join speeches and people: speeches.person_id = people.person_id
     - Include `person_id` in SELECT when querying speeches to link back to speakers
-    
+
     EXAMPLES:
-    
+
       # Count speeches per party
       SELECT party, COUNT(*) AS cnt FROM speeches GROUP BY party ORDER BY cnt DESC
-      
+
       # Top 10 speakers in a party
       SELECT speaker_name, COUNT(*) AS cnt FROM speeches WHERE party = 'M'
         GROUP BY speaker_name ORDER BY cnt DESC LIMIT 10
-      
+
       # Speeches per year for a party, with speaker birth year
       SELECT t.year, p.birth_year, COUNT(*) AS cnt
         FROM speeches t JOIN people p ON t.person_id = p.person_id
         WHERE t.party = 'S' AND t.year >= 2015
         GROUP BY t.year, p.birth_year ORDER BY t.year
-      
+
       # Count speeches mentioning a topic per party (using FTS with GIN index)
       SELECT party, COUNT(*) AS cnt FROM speeches
         WHERE search_vector @@ websearch_to_tsquery('swedish', 'artificiell intelligens OR AI')
         GROUP BY party ORDER BY cnt DESC
-      
+
       # Count speeches about climate per year (FTS)
       SELECT year, COUNT(*) AS cnt FROM speeches
         WHERE search_vector @@ websearch_to_tsquery('swedish', 'klimat')
@@ -335,7 +330,7 @@ def database_query(sql: str) -> str:
         r'\banforandetext\s*@@', 'search_vector @@', sql, flags=_re.IGNORECASE
     )
     if _rewritten != sql:
-        print_yellow(f"[database_query] Rewrote text @@ → search_vector @@ (uses GIN index)")
+        print_yellow("[database_query] Rewrote text @@ → search_vector @@ (uses GIN index)")
         sql = _rewritten
 
     # Guard: reject LIKE/ILIKE on full-text columns — these bypass the FTS index,
@@ -489,7 +484,7 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
         return ""
 
     # Merge by speech_id. Per-talk keep the best chunk hit and the summary hit.
-    merged: Dict[str, Dict[str, Any]] = {}
+    merged: dict[str, dict[str, Any]] = {}
     for row in chunk_rows:
         speech_id = row["speech_id"]
         slot = merged.setdefault(speech_id, {})
@@ -521,7 +516,7 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
     )
     talk_map = {row["id"]: row for row in talk_rows}
 
-    hits: List[HitDocument] = []
+    hits: list[HitDocument] = []
     for speech_id in top_ids:
         data = merged[speech_id]
         parent = talk_map.get(speech_id, {})
@@ -546,7 +541,7 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
         else:
             snippet = (data.get("summary_text") or "")[:800]
 
-        metadata: Dict[str, Any] = {
+        metadata: dict[str, Any] = {
             "speech_id": speech_id,
             "source_type": source_type,
             "person_id": parent.get("person_id"),
@@ -635,7 +630,7 @@ def vector_search_debates(query: str, limit: int = 5) -> HitsResponse:
 
     # Bare debate id (no "debates/" prefix) so the chat service's provenance
     # guard can identify and skip these — debates are not citable on their own.
-    hits: List[HitDocument] = [
+    hits: list[HitDocument] = [
         HitDocument(
             id=row["debate"],
             key=row["debate"],
@@ -669,7 +664,7 @@ FETCH_DEBATE_SUMMARY_BUDGET_CHARS = 7000
 
 
 @register_tool()
-def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
+def fetch_debate(debate_id: str, query: str | None = None) -> dict:
     """
     Look up a single debate by its id and return a list of its speeches with
     per-talk summaries. Registers each returned talk as a citable source.
@@ -711,7 +706,7 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
         return {"error": f"No debate found with id '{debate_id}'."}
     debate = debate_rows[0]
 
-    talk_ids: List[str] = list(debate.get("talk_ids") or [])
+    talk_ids: list[str] = list(debate.get("talk_ids") or [])
 
     talk_rows = pg.execute(
         """
@@ -726,7 +721,7 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
 
     total_summary_chars = sum(len(r.get("summary") or "") for r in talk_rows)
     trimmed_rows = talk_rows
-    note: Optional[str] = None
+    note: str | None = None
 
     if total_summary_chars > FETCH_DEBATE_SUMMARY_BUDGET_CHARS:
         ranking_method = "chronological"
@@ -798,8 +793,8 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
             )
 
     # Build a compact dict for the LLM; register the speeches as provenance sources.
-    talks_out: List[Dict[str, Any]] = []
-    hits: List[HitDocument] = []
+    talks_out: list[dict[str, Any]] = []
+    hits: list[HitDocument] = []
     for row in trimmed_rows:
         speech_id = row["id"]
         summary_text = row.get("summary") or ""
@@ -832,7 +827,7 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
     if hits:
         _tool_structured_result.set(HitsResponse(hits=hits))
 
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "debate_id": debate.get("debate"),
         "date": debate.get("date"),
         "summary": debate.get("summary"),
@@ -849,7 +844,7 @@ def fetch_debate(debate_id: str, query: Optional[str] = None) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @register_tool()
-def fetch_speeches(_ids: list[str], collection: str = "", fields: list = []) -> list:
+def fetch_speeches(_ids: list[str], collection: str = "", fields: list = None) -> list:
     """
     Fetch full documents by their id from the speeches table.
 
@@ -870,6 +865,8 @@ def fetch_speeches(_ids: list[str], collection: str = "", fields: list = []) -> 
         List of document dicts, or error message string.
     """
     # Normalize IDs: strip "speeches/" prefix
+    if fields is None:
+        fields = []
     talk_ids = []
     for i in _ids:
         if "/" in i:
@@ -954,7 +951,7 @@ _READER_MULTI_BUDGET = 12000    # chars per document when reading several
 
 # Lazy fallback reader for callers that haven't set _fast_llm_var (e.g. the
 # research job runner or ad-hoc scripts). Built once from server-side env.
-_default_reader_llm: Optional[LLM] = None
+_default_reader_llm: LLM | None = None
 
 
 def _get_reader_llm():
@@ -1120,14 +1117,14 @@ def read_documents_for(question: str, _ids: list[str]) -> str:
 
 def _normalize_search_args(
     query: str,
-    parties: Optional[Union[str, List[str]]] = None,
-    people: Optional[Union[str, List[str]]] = None,
-    debates: Optional[Union[str, List[str]]] = None,
-    from_year: Optional[Union[str, int]] = None,
-    to_year: Optional[Union[str, int]] = None,
-    limit: Optional[Union[str, int]] = 10,
-    speaker_ids: Optional[Union[str, List[str], bool]] = None,
-) -> Dict[str, Any]:
+    parties: str | list[str] | None = None,
+    people: str | list[str] | None = None,
+    debates: str | list[str] | None = None,
+    from_year: str | int | None = None,
+    to_year: str | int | None = None,
+    limit: str | int | None = 10,
+    speaker_ids: str | list[str] | bool | None = None,
+) -> dict[str, Any]:
     def to_list(val):
         if val is None:
             return []
@@ -1174,18 +1171,18 @@ def _normalize_search_args(
 @register_tool()
 def search_speeches(
     query: str,
-    parties: Optional[list[str]] = None,
-    people: Optional[list[str]] = None,
-    from_year: Optional[int] = None,
-    to_year: Optional[int] = None,
+    parties: list[str] | None = None,
+    people: list[str] | None = None,
+    from_year: int | None = None,
+    to_year: int | None = None,
     limit: int = 20,
     return_snippets: bool = False,
-    focus_ids: Optional[List[str]] = None,
-    person_ids: Optional[Union[str, List[str], bool]] = None,
+    focus_ids: list[str] | None = None,
+    person_ids: str | list[str] | bool | None = None,
 ) -> "SearchHitsResult":
     """
     Perform a full-text and metadata search in the Riksdagen 'speeches' table using PostgreSQL FTS.
-    
+
     Args:
         query: The search string (supports AND, OR, NOT, phrases in quotes, år:2018-2022).
         parties: List of party codes to filter by (e.g., ["S", "M"]).
@@ -1249,7 +1246,7 @@ def search_speeches(
             self.focus_ids = focus_ids or []
             self.speaker_ids = speaker_ids
 
-    focus_id_list: List[str] = []
+    focus_id_list: list[str] = []
     if focus_ids:
         if isinstance(focus_ids, list):
             focus_id_list = [str(item) for item in focus_ids if isinstance(item, (str, int))]
@@ -1287,7 +1284,7 @@ def search_speeches(
     auto_snippet_mode = total_text_chars > 20_000
     snippet_mode = return_snippets or auto_snippet_mode
 
-    hits: List[HitDocument] = []
+    hits: list[HitDocument] = []
     for item in results:
         if not isinstance(item, dict):
             continue
@@ -1357,14 +1354,14 @@ def search_speeches(
 @register_tool()
 def search_documents(
     query: str,
-    parties: Optional[list[str]] = None,
-    people: Optional[list[str]] = None,
-    from_year: Optional[int] = None,
-    to_year: Optional[int] = None,
+    parties: list[str] | None = None,
+    people: list[str] | None = None,
+    from_year: int | None = None,
+    to_year: int | None = None,
     limit: int = 20,
     return_snippets: bool = False,
-    focus_ids: Optional[List[str]] = None,
-    person_ids: Optional[Union[str, List[str], bool]] = None,
+    focus_ids: list[str] | None = None,
+    person_ids: str | list[str] | bool | None = None,
 ) -> "SearchHitsResult":
     """
     Full-text and metadata search over MOTIONER (written proposals submitted by MPs),
@@ -1428,7 +1425,7 @@ def search_documents(
             self.focus_ids = focus_ids or []
             self.speaker_ids = speaker_ids
 
-    focus_id_list: List[str] = []
+    focus_id_list: list[str] = []
     if focus_ids:
         if isinstance(focus_ids, list):
             focus_id_list = [str(item) for item in focus_ids if isinstance(item, (str, int))]
@@ -1464,7 +1461,7 @@ def search_documents(
     auto_snippet_mode = total_text_chars > 20_000
     snippet_mode = return_snippets or auto_snippet_mode
 
-    hits: List[HitDocument] = []
+    hits: list[HitDocument] = []
     for item in results:
         if not isinstance(item, dict):
             continue
@@ -1572,7 +1569,7 @@ def vector_search_documents(query: str, limit: int = 10) -> HitsResponse:
     if not chunk_rows and not yrkande_rows:
         return "(no results — motion embeddings may not be built yet)"
 
-    merged: Dict[str, Dict[str, Any]] = {}
+    merged: dict[str, dict[str, Any]] = {}
     for row in chunk_rows:
         slot = merged.setdefault(row["doc_id"], {"score": -1})
         if row["score"] > slot.get("chunk_score", -1):
@@ -1599,7 +1596,7 @@ def vector_search_documents(query: str, limit: int = 10) -> HitsResponse:
     )
     motion_map = {row["doc_id"]: row for row in motion_rows}
 
-    hits: List[HitDocument] = []
+    hits: list[HitDocument] = []
     for doc_id in top_ids:
         data = merged[doc_id]
         parent = motion_map.get(doc_id, {})
@@ -1610,7 +1607,7 @@ def vector_search_documents(query: str, limit: int = 10) -> HitsResponse:
         prefer_yrkande = yrkande is not None and (
             "chunk_index" not in data or data.get("yrkande_score", 0) >= data.get("chunk_score", 0)
         )
-        metadata: Dict[str, Any] = {
+        metadata: dict[str, Any] = {
             "kind": "motion",
             "title": parent.get("title"),
             "session_label": parent.get("session_label"),
@@ -1761,7 +1758,7 @@ def fetch_document(doc_id: str) -> dict:
         )
     ]))
 
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "doc_id": motion.get("doc_id"),
         "title": motion.get("title"),
         "subtitle": motion.get("subtitle"),

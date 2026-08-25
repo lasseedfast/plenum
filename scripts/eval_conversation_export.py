@@ -17,18 +17,19 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402  — after sys.path setup above
+
 load_dotenv()
 
-from postgres_client import pg
+from postgres_client import pg  # noqa: E402
 
 
-def list_sessions() -> List[Dict[str, Any]]:
+def list_sessions() -> list[dict[str, Any]]:
     return pg.execute(
         """
         SELECT session_id,
@@ -42,7 +43,7 @@ def list_sessions() -> List[Dict[str, Any]]:
     )
 
 
-def fetch_turns(session_id: str) -> List[Dict[str, Any]]:
+def fetch_turns(session_id: str) -> list[dict[str, Any]]:
     rows = pg.execute(
         "SELECT doc FROM eval_conversations WHERE session_id = %s ORDER BY started_at ASC",
         (session_id,),
@@ -50,7 +51,7 @@ def fetch_turns(session_id: str) -> List[Dict[str, Any]]:
     return [r["doc"] for r in rows]
 
 
-def fetch_by_key(key: str) -> List[Dict[str, Any]]:
+def fetch_by_key(key: str) -> list[dict[str, Any]]:
     rows = pg.execute("SELECT doc FROM eval_conversations WHERE id = %s", (int(key),))
     return [r["doc"] for r in rows]
 
@@ -60,7 +61,7 @@ def _preview(text: Any, limit: int = 400) -> str:
     return s if len(s) <= limit else s[:limit] + " (…)"
 
 
-def _render_event(e: Dict[str, Any]) -> str:
+def _render_event(e: dict[str, Any]) -> str:
     t_s = e.get("t_ms", 0) / 1000
     etype = e.get("type")
     if etype == "tool_call":
@@ -88,10 +89,10 @@ def _render_event(e: Dict[str, Any]) -> str:
     return f"- `{t_s:7.1f}s` {etype}: {_preview({k: v for k, v in e.items() if k not in ('i', 't_ms', 'type')})}"
 
 
-def render_markdown(turns: List[Dict[str, Any]]) -> str:
+def render_markdown(turns: list[dict[str, Any]]) -> str:
     if not turns:
         return "No logged turns found."
-    lines: List[str] = [f"# Eval conversation `{turns[0].get('session_id')}`", ""]
+    lines: list[str] = [f"# Eval conversation `{turns[0].get('session_id')}`", ""]
     for doc in turns:
         lines.append(f"## Turn {doc.get('turn_index')} — {doc.get('started_at')}")
         lines.append(

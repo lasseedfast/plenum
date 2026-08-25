@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import base64
 import os
-from typing import Optional
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -38,14 +37,14 @@ def decrypt_str(blob: str, key: bytes) -> str:
     return AESGCM(key).decrypt(raw[:_IV_LEN], raw[_IV_LEN:], None).decode("utf-8")
 
 
-def enc(value: Optional[str], key: Optional[bytes]) -> Optional[str]:
+def enc(value: str | None, key: bytes | None) -> str | None:
     """Encrypt when a key is present; passthrough otherwise (plaintext path)."""
     if key is None or value is None:
         return value
     return encrypt_str(value, key)
 
 
-def dec(value: Optional[str], key: Optional[bytes]) -> Optional[str]:
+def dec(value: str | None, key: bytes | None) -> str | None:
     """Decrypt v1 blobs when a key is present; passthrough anything else."""
     if key is None or not is_encrypted(value):
         return value

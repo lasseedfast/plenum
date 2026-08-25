@@ -5,7 +5,7 @@ but these describe *persistent* board state, not a request-scoped report.
 """
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -18,9 +18,9 @@ class ResearchFinding(BaseModel):
     quote: str = Field(default="", description="Short verbatim quote that grounds the claim")
     source_id: str = Field(default="", description="Bare talk id the quote comes from (e.g. 'H40911')")
     # Enriched deterministically after the trip from the seen-map — never trusted from the LLM.
-    speaker: Optional[str] = None
-    party: Optional[str] = None
-    date: Optional[str] = None
+    speaker: str | None = None
+    party: str | None = None
+    date: str | None = None
 
 
 class ResearchLead(BaseModel):
@@ -30,15 +30,15 @@ class ResearchLead(BaseModel):
     target: str = Field(..., description="Search query, person_id, or debate id")
     lead: str = Field(default="", description="What to do and why, in plain Swedish")
     # Display name for person/debate targets, resolved from the seen-map.
-    label: Optional[str] = None
+    label: str | None = None
 
 
 class ThreadResearch(BaseModel):
     """Distilled result of one bounded research trip."""
 
-    findings: List[ResearchFinding] = Field(default_factory=list)
-    open_questions: List[str] = Field(default_factory=list)
-    leads: List[ResearchLead] = Field(default_factory=list)
+    findings: list[ResearchFinding] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+    leads: list[ResearchLead] = Field(default_factory=list)
 
 
 class ThreadSeed(BaseModel):
@@ -47,7 +47,7 @@ class ThreadSeed(BaseModel):
     title: str
     question: str
     why: str = ""
-    hints: List[str] = Field(default_factory=list)
+    hints: list[str] = Field(default_factory=list)
 
 
 class BoardSeeds(BaseModel):
@@ -59,10 +59,10 @@ class BoardSeeds(BaseModel):
                      "words, max 60 characters, no coined compounds, no trailing year"),
     )
     intro: str = ""
-    threads: List[ThreadSeed] = Field(default_factory=list)
+    threads: list[ThreadSeed] = Field(default_factory=list)
 
 
 class ScoutQueries(BaseModel):
     """Follow-up search queries proposed between scout rounds."""
 
-    queries: List[str] = Field(default_factory=list)
+    queries: list[str] = Field(default_factory=list)
