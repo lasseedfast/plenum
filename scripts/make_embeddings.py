@@ -169,7 +169,7 @@ def make_motion_embeddings(year: int | None = None) -> int:
         """
     params = None
     if year is not None:
-        sql += " AND m.year = %s"
+        sql += " AND m.session_year = %s"
         params = (year,)
     missing = pg.execute(sql, params)
     logger.info(f"Found {len(missing)} documents without speech_chunks")

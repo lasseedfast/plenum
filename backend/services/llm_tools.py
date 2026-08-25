@@ -234,7 +234,7 @@ def database_query(sql: str) -> str:
     documents table (motioner — written proposals from MPs):
       doc_id (TEXT, PK)      - Motion id (e.g. 'HD02846')
       session_label (TEXT)              - Riksmöte (e.g. '2022/23')
-      year (INT)             - Riksmöte start year
+      session_year (INT)     - Riksmöte start year (NOT "year" — that column doesn't exist)
       date (DATE)           - Submission date (cast to text: date::text)
       title (TEXT)           - Motion title
       subtype (TEXT)          - e.g. 'Enskild motion', 'Kommittémotion', 'Partimotion'
@@ -308,7 +308,7 @@ def database_query(sql: str) -> str:
       # Most active motion authors in a year
       SELECT a.name, a.party, COUNT(*) AS cnt
         FROM document_authors a JOIN documents m ON a.doc_id = m.doc_id
-        WHERE m.year = 2023 AND a.ordinal = 0
+        WHERE m.session_year = 2023 AND a.ordinal = 0
         GROUP BY a.name, a.party ORDER BY cnt DESC LIMIT 10
 
     To surface results to the user as a stats card, call share_insight(sql="...", message="...")
@@ -1272,7 +1272,7 @@ def search_speeches(
             limit=args["limit"],
             return_snippets=False,
             focus_ids=focus_id_list,
-            speaker_ids=person_ids,
+            speaker_ids=args["speaker_ids"],
         ),
         include_snippets=True,
         return_snippets=False,
@@ -1449,7 +1449,7 @@ def search_documents(
             to_year=args["to_year"],
             limit=args["limit"],
             focus_ids=focus_id_list,
-            speaker_ids=person_ids,
+            speaker_ids=args["speaker_ids"],
         ),
         include_snippets=True,
         return_snippets=False,
@@ -1587,7 +1587,7 @@ def vector_search_documents(query: str, limit: int = 10) -> HitsResponse:
 
     motion_rows = pg.execute(
         """
-        SELECT doc_id, title, session_label, committee, date::text AS date, year,
+        SELECT doc_id, title, session_label, committee, date::text AS date, session_year AS year,
                parties, author_names, num_proposals, url_html
         FROM documents
         WHERE doc_id = ANY(%s::text[])
@@ -1698,7 +1698,7 @@ def fetch_document(doc_id: str) -> dict:
     rows = pg.execute(
         """
         SELECT doc_id, title, subtitle, session_label, designation, subtype, committee, status,
-               date::text AS date, year, text, has_text, proposals_raw,
+               date::text AS date, session_year AS year, text, has_text, proposals_raw,
                parties, author_names, url_pdf, url_html
         FROM documents
         WHERE doc_id = %s

@@ -472,7 +472,7 @@ class MotionSearchService(SearchService):
             m.committee,
             m.status,
             m.date::text AS date,
-            m.year AS year,
+            m.session_year AS year,
             m.parties,
             m.author_names,
             m.num_proposals,
