@@ -3558,63 +3558,184 @@ a.rc-insight__footnote:hover {
 
 .snapshot-not-found h2 { margin: 0 0 0.5rem; }
 .snapshot-not-found p  { color: var(--muted); margin: 0; }
-
 /* ── LLM Settings Panel ──────────────────────────────────────────────────── */
 
+/* Laid out as numbered steps: provider → key → models → editor pass. Each step
+   indents its body under the step number, so the numbers form a spine. */
+
 .llm-settings-panel {
-    background: #f8f8f8;
-    border-radius: 6px;
-    padding: 0.8em 1em;
-    font-size: 0.95em;
-    border: 1px solid var(--panel-border);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    font-size: var(--fs-14);
 }
 
-/* In the settings modal the surrounding .panel is already the card. */
 .llm-modal .llm-settings-panel {
     background: none;
     border: none;
     padding: 0;
 }
 
-.llm-settings-panel__intro {
-    margin: 0 0 0.7em;
-    color: var(--muted);
-    font-size: 0.92em;
-}
-
-.llm-settings-panel__providers {
-    border: none;
-    padding: 0;
-    margin: 1.1em 0 0.6em;
+.llm-step {
     display: flex;
     flex-direction: column;
-    gap: 0.3em;
 }
 
-.llm-settings-panel__legend {
-    font-weight: 600;
-    font-size: 0.95em;
-    margin-bottom: 0.4em;
-    padding: 0;
-}
-
-.llm-settings-panel__provider-option {
+.llm-step__head {
     display: flex;
     align-items: center;
-    gap: 0.5em;
-    cursor: pointer;
+    gap: var(--space-2);
 }
 
-.llm-settings-panel__key-row {
-    margin-top: 0.4em;
-}
-
-.llm-settings-panel__key-label {
-    display: block;
+.llm-step__num {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    border-radius: var(--radius-pill);
+    background: var(--blue);
+    color: var(--surface);
+    font-size: var(--fs-12);
     font-weight: 600;
-    font-size: 0.92em;
-    margin-bottom: 0.3em;
+    display: inline-grid;
+    place-items: center;
 }
+
+.llm-step__title {
+    margin: 0;
+    font-size: var(--fs-16);
+    font-weight: 600;
+    color: var(--blue-2);
+}
+
+.llm-step__help {
+    margin: var(--space-1) 0 var(--space-3) 28px;
+    color: var(--ink-4);
+    font-size: var(--fs-13);
+    line-height: var(--lh-body);
+    max-width: 46em;
+}
+
+.llm-step__body {
+    margin-left: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+/* Provider chips, grouped by where the data ends up. */
+
+.llm-provider-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--panel-border);
+}
+
+.llm-provider-tabs__group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.llm-provider-tabs__group-label {
+    font-size: var(--fs-12);
+    font-weight: 600;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--ink-5);
+}
+
+.llm-ptab {
+    font: inherit;
+    font-size: var(--fs-13);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--panel-border);
+    background: var(--surface-2);
+    color: var(--ink-3);
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.llm-ptab:hover {
+    background: var(--surface);
+    border-color: var(--ink-5);
+}
+
+.llm-ptab--active {
+    background: var(--surface);
+    color: var(--ink);
+    font-weight: 600;
+    border-color: var(--blue-3);
+    box-shadow: 0 0 0 3px var(--blue-soft);
+}
+
+.llm-ptab__check {
+    display: inline-flex;
+    color: var(--blue-3);
+}
+
+.llm-provider-info {
+    margin-top: var(--space-3);
+}
+
+.llm-provider-info__blurb {
+    margin: 0;
+    font-size: var(--fs-13);
+    line-height: var(--lh-body);
+    color: var(--ink-3);
+    max-width: 46em;
+}
+
+.llm-provider-info__pills {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: var(--space-2);
+}
+
+.llm-pill {
+    font-size: var(--fs-12);
+    padding: 1px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-2);
+    border: 1px solid var(--panel-border);
+    color: var(--ink-4);
+}
+
+.llm-pill--priv {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.llm-pill--ok {
+    color: var(--ok);
+    background: var(--ok-soft);
+    border-color: transparent;
+}
+
+.llm-pill-link {
+    font-size: var(--fs-12);
+    color: var(--blue-3);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.llm-pill-link:hover {
+    text-decoration: underline;
+}
+
+/* API key */
 
 .llm-settings-panel__key-input-wrap {
     position: relative;
@@ -3623,18 +3744,21 @@ a.rc-insight__footnote:hover {
 }
 
 .llm-settings-panel__key-input {
-    width: 100%;
-    padding: 0.4em 2em 0.4em 0.6em;
+    flex: 1;
+    padding: 0.45em 2em 0.45em 0.7em;
     border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    font-size: 0.95em;
-    font-family: monospace;
-    background: #fff;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: var(--fs-13);
+    background: var(--surface-2);
+    width: 100%;
 }
 
 .llm-settings-panel__key-input:focus {
-    outline: 2px solid var(--primary);
-    outline-offset: 1px;
+    outline: none;
+    border-color: var(--blue-3);
+    box-shadow: 0 0 0 3px var(--blue-soft);
+    background: var(--surface);
 }
 
 .llm-settings-panel__key-clear {
@@ -3644,70 +3768,192 @@ a.rc-insight__footnote:hover {
     border: none;
     cursor: pointer;
     color: var(--muted);
-    font-size: 0.85em;
+    font-size: 0.9em;
+    line-height: 1;
     padding: 0.2em;
 }
 
+/* Model list: fetch, filter, sort */
+
+.llm-fetch-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.llm-settings-panel__fetch-btn {
+    font-size: var(--fs-13);
+    padding: 0.3em 0.8em;
+}
+
+.llm-settings-panel__model-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.llm-settings-panel__model-filter {
+    flex: 1 1 12em;
+    min-width: 0;
+    padding: 0.35em 0.6em;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-13);
+    background: var(--surface);
+}
+
+.llm-settings-panel__model-sort {
+    padding: 0.35em 0.5em;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-12);
+    background: var(--surface);
+}
+
+/* One card per model role — icon, what it is used for, then the picker. */
+
+.llm-roles {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+}
+
+.llm-role {
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    padding: var(--space-3);
+}
+
+.llm-role__head {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+}
+
+.llm-role__icon {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: var(--radius-xs);
+    background: var(--surface-2);
+    color: var(--ink-4);
+    display: inline-grid;
+    place-items: center;
+}
+
+.llm-role__title {
+    display: block;
+    font-weight: 600;
+    font-size: var(--fs-14);
+    color: var(--ink);
+    cursor: pointer;
+}
+
+.llm-role__blurb {
+    margin: 2px 0 0;
+    font-size: var(--fs-13);
+    line-height: var(--lh-body);
+    color: var(--ink-4);
+}
+
+.llm-role__input {
+    margin: var(--space-3) 0 0 40px;
+}
+
+.llm-role__select {
+    width: 100%;
+    font-family: var(--font-mono);
+    font-size: var(--fs-13);
+    padding: 0.45em 0.6em;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    color: var(--ink);
+}
+
+.llm-role__select:focus {
+    outline: none;
+    border-color: var(--blue-3);
+    box-shadow: 0 0 0 3px var(--blue-soft);
+    background: var(--surface);
+}
+
+@media (max-width: 560px) {
+    .llm-role__input {
+        margin-left: 0;
+    }
+}
+
+/* Facts about the model the user picked — price first, since that is the thing
+   you cannot read off the model id. */
+
+.llm-model-facts {
+    margin-top: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-left: 2px solid var(--blue-4);
+    border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+    background: var(--surface-2);
+    font-size: var(--fs-12);
+}
+
+.llm-model-facts__id {
+    display: block;
+    font-family: var(--font-mono);
+    color: var(--ink-4);
+    word-break: break-all;
+}
+
+.llm-model-facts__list {
+    margin: var(--space-1) 0 0;
+    padding-left: 1.1em;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    color: var(--ink-3);
+}
+
+.llm-model-facts__unknown {
+    color: var(--ink-4);
+}
+
+.llm-model-facts__estimate {
+    margin: var(--space-1) 0 0;
+    color: var(--ink-4);
+}
+
+/* Shared small text */
+
+.llm-settings-panel__provider-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5em;
+    font-size: var(--fs-14);
+    cursor: pointer;
+}
+
 .llm-settings-panel__hint {
-    margin: 0.3em 0 0;
-    font-size: 0.88em;
+    margin: 0;
+    font-size: var(--fs-12);
     color: var(--muted);
 }
 
 .llm-settings-panel__warning {
-    margin: 0.3em 0 0;
-    font-size: 0.88em;
-    color: #c05000;
+    margin: 0;
+    font-size: var(--fs-12);
+    color: var(--warn);
 }
 
 .llm-settings-panel__saved {
-    margin: 0.5em 0 0;
-    font-size: 0.9em;
-    color: #2a7a2a;
+    margin: 0;
+    font-size: var(--fs-13);
+    color: var(--ok);
     font-weight: 600;
+    word-break: break-all;
 }
-
-.llm-settings-panel__models-row {
-    margin-top: 0.6em;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4em;
-}
-
-.llm-settings-panel__fetch-btn {
-    align-self: flex-start;
-    font-size: 0.9em;
-    padding: 0.3em 0.8em;
-}
-
-.llm-settings-panel__model-selectors {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3em;
-    margin-top: 0.2em;
-}
-
-.llm-settings-panel__model-label {
-    font-weight: 600;
-    font-size: 0.92em;
-}
-
-.llm-settings-panel__model-select {
-    padding: 0.35em 0.6em;
-    border: 1px solid var(--panel-border);
-    border-radius: 6px;
-    font-size: 0.93em;
-    background: #fff;
-    max-width: 100%;
-    max-height: 9em;
-    overflow-y: auto;
-}
-
-.llm-settings-panel__model-select:focus {
-    outline: 2px solid var(--primary);
-    outline-offset: 1px;
-}
-
 /* ── Deep research ─────────────────────────────────────────────── */
 
 /* Taglines, inputs and headings deliberately have no research-specific rules:
@@ -4218,7 +4464,7 @@ a.rc-insight__footnote:hover {
 /* Settings hold a whole form — wider, and scrollable rather than taller than
    the viewport. */
 .llm-modal {
-	max-width: 34rem;
+	max-width: 40rem;
 	max-height: 85vh;
 	overflow-y: auto;
 	gap: var(--space-4);

@@ -266,8 +266,48 @@ def list_provider_models(provider_id: str, request: Request) -> dict:
         raw_models = [m for m in raw_models if not any(s in m["id"] for s in _SKIP)]
     # OpenRouter already filtered by ?supported_parameters=tools above.
 
-    models = [m["id"] for m in raw_models]
-    return {"models": sorted(models)}
+    models = [_model_info(m) for m in raw_models]
+    models.sort(key=lambda m: m["id"])
+    return {"models": models}
+
+
+def _model_info(m: dict) -> dict:
+    """Normalise one provider /models entry into what the settings UI shows.
+
+    Only OpenRouter reports pricing today; for the other providers the price
+    fields stay None and the UI simply leaves the cost out rather than guessing.
+    """
+    pricing = m.get("pricing") or {}
+
+    def per_million(key: str) -> float | None:
+        raw = pricing.get(key)
+        if raw in (None, ""):
+            return None
+        try:
+            # Providers quote USD per token, usually as a string ("0.000003").
+            return float(raw) * 1_000_000
+        except (TypeError, ValueError):
+            return None
+
+    top = m.get("top_provider") or {}
+    architecture = m.get("architecture") or {}
+    params = m.get("supported_parameters") or []
+
+    context = m.get("context_length") or top.get("context_length") or m.get("max_context_length")
+    max_output = top.get("max_completion_tokens") or m.get("max_output_tokens")
+
+    return {
+        "id": m["id"],
+        "name": m.get("name") or m["id"],
+        "description": (m.get("description") or "")[:400],
+        "context_length": context if isinstance(context, int) else None,
+        "max_output_tokens": max_output if isinstance(max_output, int) else None,
+        # USD per 1M tokens, or None when the provider does not publish prices.
+        "prompt_price": per_million("prompt"),
+        "completion_price": per_million("completion"),
+        "reasoning": bool(m.get("reasoning")) or "reasoning" in params,
+        "input_modalities": architecture.get("input_modalities") or [],
+    }
 
 
 # ── MP (person) endpoints ──────────────────────────────────────────────────────
