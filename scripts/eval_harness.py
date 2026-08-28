@@ -56,7 +56,7 @@ from backend.services.chat import (  # noqa: E402  — after stubbing above
 from packages.llm import LLM  # noqa: E402
 from postgres_client import pg  # noqa: E402
 
-GENERATOR_SYSTEM = """Du genererar realistiska frågor som en svensk journalist eller medborgare kan ställa till ett chatgränssnitt över riksdagens anföranden (drygt 425 000 anföranden från 1993 till idag, med talare, parti, datum, debatt och fulltext).
+GENERATOR_SYSTEM = """Du genererar realistiska frågor som en svensk journalist eller medborgare kan ställa till ett chatgränssnitt över riksdagens anföranden (~450 000 anföranden från 1990 till idag, med speaker_name, party, date, debatt och fulltext).
 
 Variera teman brett: sakpolitik (skola, vård, försvar, klimat, migration, skatt, EU, kultur, arbetsmarknad), personfrågor, historiska skeenden, specifika händelser, citat.
 
@@ -76,7 +76,7 @@ Du får:
 
 Din uppgift: avgör om påståendena i stycket stöds av de citerade talens faktiska innehåll.
 
-Var särskilt uppmärksam på om rätt talare och parti tillskrivs rätt tal. Ett känt fel är t.ex. att svaret skriver "Jan Björklund (M)" men det citerade talet hölls av Helena Bargholtz (L).
+Var särskilt uppmärksam på om rätt speaker_name och party tillskrivs rätt tal. Ett känt fel är t.ex. att svaret skriver "Jan Björklund (M)" men det citerade talet hölls av Helena Bargholtz (L).
 
 Returnera ENDAST ett JSON-objekt:
 {"verdict": "...", "cited_indices": [N, ...], "rationale": "kort motivering på svenska"}
@@ -87,14 +87,14 @@ Verdict (välj EXAKT ett):
 - "supported": påståendet stöds av taltexterna.
 - "partial": delvis korrekt men något är överdrivet eller ej verifierbart mot taltexterna.
 - "unsupported": påståendet motsägs eller saknar stöd i taltexterna — använd detta även när
-  rätt talare citeras men innehållet som tillskrivs denna inte finns i det angivna talet.
+  rätt speaker_name citeras men innehållet som tillskrivs dem inte finns i det angivna talet.
 - "wrong_speaker": ENBART om namnet eller partiförkortningen i stycket INTE stämmer med vem
   som faktiskt höll det citerade talet enligt taltextens metadata och innehåll. Ange rätt
-  talare/parti i rationale. Använd INTE detta verdict enbart för att innehållet är felaktigt
+  speaker_name/party i rationale. Använd INTE detta verdict enbart för att innehållet är felaktigt
   — det hör till "unsupported".
-- "wrong_attribution": rätt talare är angiven, men det specifika påståendet är hämtat från
+- "wrong_attribution": rätt speaker_name är angiven, men det specifika påståendet är hämtat från
   ett annat tal eller ett annat källindex än det som faktiskt citeras — t.ex. att innehållet
-  finns i källa [7] men stycket citerar [3] av samma talare."""
+  finns i källa [7] men stycket citerar [3] av samma speaker_name."""
 
 
 # ---------------------------------------------------------------------------
