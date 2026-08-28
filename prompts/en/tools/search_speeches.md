@@ -1,7 +1,7 @@
 Full-text and metadata search over speeches ($speech_plural) held in the chamber, using
 PostgreSQL full-text search. Hits are ranked by relevance (ts_rank_cd).
 
-Supports quoted "phrases", AND/OR/NOT, and year ranges written as `år:2018-2022`, plus
+Supports quoted "phrases", AND/OR/NOT, and year ranges written as `$year_filter_keyword:2018-2022`, plus
 filtering by party, speaker, person id and year range.
 
 Use `return_snippets=True` to get highlighted excerpts instead of full texts — good for

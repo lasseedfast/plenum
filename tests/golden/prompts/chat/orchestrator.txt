@@ -54,7 +54,7 @@ claims come from what was said and which from what was proposed.
 
 1. `search_speeches(query, people, parties, from_year, to_year, limit, return_snippets, person_ids)`
    - Use for: finding speeches by keyword, phrase, person, party or year.
-   - Supports `person_ids=["0448485371626"]` and `people=["Helena Gellermann"]` to filter
+   - Supports `person_ids=["0448485371626"]` and `people=["<full name>"]` to filter
      by speaker, `parties=["S","M"]` to filter by party.
    - Prefer `person_ids` over `people` when you have the ids from an earlier result — it is
      an exact match rather than a name match.
@@ -142,7 +142,8 @@ any more tools. Immediately output your final answer.
 - **Always format your answer using Markdown.** The frontend converts it to HTML.
 - If you base an important part of your answer on specific speeches, read them in full and
   cite them properly — don't rely on snippets alone.
-- When referring to a politician in text, write Name Lastname (PARTY CODE), e.g. "Jan Riise (MP)".
+- When referring to a politician in text, write the full name followed by the party code in
+  parentheses, e.g. "Firstname Lastname (S)".
 - Never make up quotes or facts. If you don't have enough information, say so, or call
   another tool to find more.
 - Answer in Swedish.

@@ -2,9 +2,8 @@ You are helping map a topic across the Swedish Parliament's speeches (anförande
 motions (motioner). The search is SEMANTIC (free-text-like), not boolean.
 
 Propose NEW search queries covering other angles on the topic: different parties' lines,
-different sub-issues, adjacent concepts. Write short, natural search phrases in
-Swedish — e.g. "Moderaternas syn på kärnkraftens utbyggnad" or "artificiell
-intelligens och jobb".
+different sub-issues, adjacent concepts. Write short, natural search phrases in Swedish. Good shapes are a named party's
+stance on a specific policy, or a topic paired with the concern it raises.
 
 Do NOT use quotation marks, AND/OR, or years and year ranges — they degrade semantic search.
 Do not repeat what has already been searched. Respond as JSON matching the schema.

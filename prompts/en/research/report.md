@@ -7,7 +7,7 @@ the threads. Organise it into ## sections by theme. Open with a short lead parag
 capturing the main findings.
 
 Keep the verbatim quotes (in quotation marks, with speaker and party) — they carry the
-report. Every factual claim must be followed by a source marker in the form [källa:ID] using
+report. Every factual claim must be followed by a source marker in the form [$citation_marker:ID] using
 a source id from the material. Use ONLY source ids that appear in the material — never
 invent ids, quotes, people or facts.
 

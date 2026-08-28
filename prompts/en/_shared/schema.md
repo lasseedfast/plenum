@@ -83,25 +83,18 @@ invent one; a query against a column not listed here fails outright.
   groups per party.
 
 **Party values.** The real party codes are $party_codes. But `speeches.party` also contains
-NULL and the chair's titles (`TALMANNEN`, `FÖRSTE VICE TALMANNEN`, and so on) — those are
-procedural remarks from whoever was presiding, not a party. Exclude them when counting per
-party, or they appear as parties in your results.
+NULL and $non_party_values — those are procedural remarks from whoever was presiding, not a
+party. Exclude them when counting per party, or the chair appears as a party in your results.
 
-**Reading `chamber_decision` correctly.** A proposal's outcome is not a clean yes/no, and
-filtering on `'Bifall'` alone is the most common way to get a badly wrong answer — it covers
-barely one percent of the rows. The values are:
+**Reading `chamber_decision` correctly.** An outcome is not a clean yes/no, and filtering on
+the plain "approved" value alone is the most common way to get a badly wrong answer — in this
+corpus it covers barely one percent of the rows. The values are:
 
-- `Avslag` — rejected. The large majority of proposals.
-- `Bifall` — approved outright. Rare.
-- `Delvis bifall` — partly approved.
-- `= utskottet` / `=utskottet` — the chamber followed the committee. **Both spellings occur**
-  and together they cover a large share of the data. To know what actually happened, read
-  `committee_recommendation` for these rows.
-- `NULL` — not decided, or not applicable.
+$decision_values
 
-So: to count what a party got through, account for `Bifall`, `Delvis bifall`, and the
-`= utskottet` rows whose `committee_recommendation` was an approval. If you report a single
-number, say which of these it covers.
+So: to count what a party actually got through, account for the approved and partly-approved
+values *and* the rows that defer to the committee, resolving those through
+`committee_recommendation`. If you report a single number, say which of these it covers.
 
 **Examples**
 
@@ -112,15 +105,15 @@ number, say which of these it covers.
 
     -- most active speakers in one party
     SELECT speaker_name, person_id, COUNT(*) AS cnt FROM speeches
-      WHERE party = 'M' GROUP BY 1, 2 ORDER BY cnt DESC LIMIT 10
+      WHERE party = '$party_code_example' GROUP BY 1, 2 ORDER BY cnt DESC LIMIT 10
 
-    -- speeches on a topic per party, using the index
+    -- speeches on a topic per party, using the index (query words in $answer_language_native)
     SELECT party, COUNT(*) AS cnt FROM speeches
-      WHERE search_vector @@ websearch_to_tsquery('$fts_config', 'artificiell intelligens OR AI')
+      WHERE search_vector @@ websearch_to_tsquery('$fts_config', '<topic OR synonym>')
       GROUP BY party ORDER BY cnt DESC
 
     -- how one party's proposals fared
     SELECT p.chamber_decision, p.committee_recommendation, COUNT(*) AS cnt
       FROM document_proposals p JOIN documents d USING (doc_id)
-      WHERE d.parties && ARRAY['C']
+      WHERE d.parties && ARRAY['$party_code_example']
       GROUP BY 1, 2 ORDER BY cnt DESC

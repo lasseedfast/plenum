@@ -6,5 +6,6 @@ strengthen the answer (max ~200 characters per quote), and tag every claim and q
 the source's tag exactly as it appears in the document header, e.g.
 `[src:$speech_id_example]`.
 
-Say "inget i dokumenten" if the answer is not in the texts you were given. Never invent
+Say plainly that the documents contain nothing on it if the answer is not in the texts you
+were given. Never invent
 anything. Do not reproduce whole documents. Answer in $answer_language.

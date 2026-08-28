@@ -18,16 +18,16 @@ Add `speaker_ids` (person_id values) to highlight members' portraits, always pai
 `speaker_ids_context` explaining in one or two sentences why those people matter here. If
 you name a person in `message`, include their person_id so the frontend can link to them.
 
-Examples:
+Examples (write `message` in $answer_language; the shapes matter, not these words):
 
     share_insight(
-        message="60 % av SD:s AI-debatter 2019–2022 hölls av tre ledamöter.",
+        message="<one concrete finding naming the people involved>",
         speaker_ids=["$person_id_example"],
-        speaker_ids_context="Dessa tre ledamöter stod för merparten av partiets AI-debatter.",
+        speaker_ids_context="<why these people matter to the finding>",
     )
 
     share_insight(
-        message="Antalet anföranden om kärnkraft mer än fördubblades efter 2019.",
+        message="<what the numbers show>",
         sql="SELECT year, COUNT(*) FROM speeches WHERE search_vector @@ "
-            "websearch_to_tsquery('$fts_config', 'kärnkraft') GROUP BY year ORDER BY year",
+            "websearch_to_tsquery('$fts_config', '<topic>') GROUP BY year ORDER BY year",
     )

@@ -6,7 +6,7 @@ the concrete proposals ($proposal_plural) behind positions taken in debate, to a
 chamber outcomes, or when the question is explicitly about motions.
 
 Same query syntax and filters as `search_speeches`: quoted "phrases", AND/OR/NOT, year
-ranges as `år:2018-2022`. `parties` and `people` match any co-author, not just the first.
+ranges as `$year_filter_keyword:2018-2022`. `parties` and `people` match any co-author, not just the first.
 
 Use `return_snippets=True` to scan before reading in full. Always pass a `limit`.
 

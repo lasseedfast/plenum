@@ -11,7 +11,7 @@
 - Example: `The ROT deduction was extended in 2015[src:$speech_id_example].`
 - If a claim is general and rests on more than about eight sources, state it without a
   citation rather than picking an arbitrary few.
-- Do **not** write a sources section (`### Källor`) — the system generates it.
+- Do **not** write a sources section (`### $sources_heading`) — the system generates it.
 - Do **not** use `[1]`, `[2]` numbering — only `[src:ID]` tags from tool results.
 - Do **not** put `[src:...]` on `database_query` results. Counts and aggregates have no
   individual source id; just state the numbers.

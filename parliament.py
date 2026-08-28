@@ -104,6 +104,8 @@ class Parliament:
     activity_types: dict[str, dict[str, str]]
     document_subtypes: dict[str, str]
     decisions: dict[str, dict[str, str]]
+    citations: dict[str, str]
+    search_syntax: dict[str, str]
     sessions: dict[str, Any]
     ids: dict[str, dict[str, str]]
     urls: dict[str, str]
@@ -251,6 +253,8 @@ def load(path: Path | None = None) -> Parliament:
         activity_types=data.get("activity_types", {}),
         document_subtypes=data.get("document_subtypes", {}),
         decisions=data.get("decisions", {}),
+        citations=data.get("citations", {}),
+        search_syntax=data.get("search_syntax", {}),
         sessions=data.get("sessions", {}),
         ids=data.get("ids", {}),
         urls=data.get("urls", {}),

@@ -6,5 +6,6 @@ Typical flow: `search_documents` or `vector_search_documents` → pick a hit →
 
 Use it to answer what a motion concretely proposed and what became of it. Each proposal
 carries `committee_recommendation` (what the committee recommended) and `chamber_decision`
-(what the chamber decided) — note that a decision of "= utskottet" means the chamber
-followed the committee, so read the recommendation to know the outcome.
+(what the chamber decided). Some decision values carry no outcome of their own and simply
+record that the chamber followed the committee — for those, the recommendation is the
+outcome. The full list is in the `database_query` description.

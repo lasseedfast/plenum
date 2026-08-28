@@ -81,6 +81,40 @@ def _expand_includes(text: str, depth: int = 0) -> str:
     return _INCLUDE_RE.sub(replace, text)
 
 
+# Human-readable meanings for the `meaning:` codes in `decisions:`. Kept here and
+# not in the YAML so a fork writes one word per value rather than a sentence.
+_DECISION_MEANINGS = {
+    "approved": "approved outright",
+    "rejected": "rejected",
+    "partly_approved": "partly approved",
+    "follows_committee": (
+        "no outcome of its own — the chamber followed the committee, so "
+        "`committee_recommendation` has to be read to learn what happened"
+    ),
+    "undecided": "not decided, or not applicable",
+}
+
+
+def _decision_lines() -> str:
+    """Render `decisions:` as prompt-ready bullets, grouped by meaning.
+
+    Values sharing a meaning are listed together, because a parliament that
+    stores the same outcome under two spellings (Sweden has both `= utskottet`
+    and `=utskottet`) needs the model to know that filtering on one misses the
+    other.
+    """
+    grouped: dict[str, list[str]] = {}
+    for value, spec in PARLIAMENT.decisions.items():
+        grouped.setdefault(spec.get("meaning", "undecided"), []).append(value)
+    lines = []
+    for meaning, values in grouped.items():
+        shown = ", ".join(f"`{v}`" for v in values)
+        note = " **Both spellings occur.**" if len(values) > 1 else ""
+        lines.append(f"- {shown} — {_DECISION_MEANINGS.get(meaning, meaning)}.{note}")
+    lines.append("- `NULL` — not decided, or not applicable.")
+    return "\n".join(lines)
+
+
 def base_context() -> dict[str, Any]:
     """Values available to every prompt without being passed explicitly.
 
@@ -88,7 +122,19 @@ def base_context() -> dict[str, Any]:
     and read naturally in any parliament's own language.
     """
     ids = PARLIAMENT.ids
+    cites = PARLIAMENT.citations
     return {
+        # Deployment literals. A prompt that spells these out in one parliament's
+        # own words stops being portable, so they are rendered from config here.
+        "citation_marker": cites.get("source_marker", "source"),
+        "sources_heading": cites.get("sources_heading", "Sources"),
+        "open_questions_heading": cites.get("open_questions_heading", "What remains"),
+        "year_filter_keyword": PARLIAMENT.search_syntax.get("year_filter", "year"),
+        "decision_values": _decision_lines(),
+        "party_code_example": (PARLIAMENT.party_codes or ["X"])[0],
+        "non_party_values": ", ".join(
+            f"`{v}`" for v in PARLIAMENT.party_defaults.get("non_party_values", [])
+        ),
         "parliament_name": PARLIAMENT.meta.get("name", ""),
         "parliament_name_en": PARLIAMENT.meta.get("name_en", ""),
         "country": PARLIAMENT.meta.get("country", ""),
