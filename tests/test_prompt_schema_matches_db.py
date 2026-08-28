@@ -85,3 +85,40 @@ def test_no_invented_columns(claimed):
         if missing:
             invented[table] = missing
     assert not invented, f"prompt names columns that do not exist: {invented}"
+
+
+def test_warns_about_columns_whose_case_is_not_normalised():
+    """A column holding both `C` and `c` silently undercounts any equality filter.
+
+    Found via a smoke run: `document_authors.party = 'C'` returns 33,776 rows where
+    a case-insensitive compare returns 46,652 — a 28 % undercount, with no error to
+    notice. The prompt has to say so; the other party columns are clean.
+    """
+    from prompts_loader import load_prompt
+
+    schema = load_prompt("_shared/schema")
+    assert "document_authors.party" in schema
+    assert "upper(" in schema, "schema block must show a case-insensitive comparison"
+
+
+def test_case_sensitivity_claim_still_holds():
+    """If ingest ever normalises the data, this warning becomes misleading."""
+    try:
+        from postgres_client import pg
+
+        pg.execute("SELECT 1")
+    except Exception as exc:
+        pytest.skip(f"database unreachable: {exc}")
+
+    mixed = pg.execute(
+        "SELECT COUNT(*) AS c FROM document_authors WHERE party <> upper(party)"
+    )[0]["c"]
+    assert mixed > 0, (
+        "document_authors.party is now normalised — drop the case warning from "
+        "prompts/en/_shared/schema.md, it no longer applies."
+    )
+    for table, column in (("speeches", "party"), ("people", "party")):
+        clean = pg.execute(
+            f"SELECT COUNT(*) AS c FROM {table} WHERE {column} <> upper({column})"
+        )[0]["c"]
+        assert clean == 0, f"{table}.{column} is now mixed-case too — the prompt says it is clean"

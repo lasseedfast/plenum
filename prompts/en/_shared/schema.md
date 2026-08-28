@@ -45,6 +45,10 @@ and handles quoted phrases, `OR`, `-` to exclude, and stemming. It covers the te
 
 - Party filter on documents: `parties && ARRAY['$party_code_example']` matches any
   co-author; `unnest(parties)` groups per party.
+- **`document_authors.party` is not normalised** — the same party appears as `C` and `c`,
+  `MP`, `Mp` and `mp`. Always compare it case-insensitively (`upper(a.party) = 'C'`), or you
+  silently lose about a quarter of the rows. `speeches.party`, `people.party` and
+  `documents.parties` are clean; this one column is not.
 
 **Party values.** The real codes are $party_codes. `speeches.party` also holds NULL and
 $non_party_values — the presiding chair, not a party. Exclude those from per-party counts.
