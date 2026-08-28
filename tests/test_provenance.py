@@ -275,3 +275,57 @@ class TestTrimSnippet:
 
     def test_whitespace_stripped(self):
         assert _trim_snippet("  hello  ") == "hello"
+
+
+# ---------------------------------------------------------------------------
+# _format_src_tag ←→ _SRC_PATTERN
+#
+# These two lived apart and drifted: the tag builder emitted a space-separated
+# form that the citation parser did not match, so every summarised tool result
+# handed the orchestrator a tag which — copied verbatim, as instructed — parsed
+# as no citation at all and dropped the source without a warning.
+# ---------------------------------------------------------------------------
+
+
+class TestSrcTagRoundTrip:
+    @staticmethod
+    def _ids(text: str) -> list[str]:
+        from backend.services.provenance import _SRC_PATTERN
+
+        return [m.group(1) for m in _SRC_PATTERN.finditer(text)]
+
+    def test_full_tag_parses_back_to_the_bare_id(self):
+        from backend.services.llm_tools import _format_src_tag
+
+        tag = _format_src_tag("GH09116-16", "Peter Rådberg", "MP", "2009-11-12")
+        assert self._ids(tag) == ["GH09116-16"]
+
+    def test_tag_without_metadata_is_bare(self):
+        from backend.services.llm_tools import _format_src_tag
+
+        assert _format_src_tag("GH09116-16") == "[src:GH09116-16]"
+        assert self._ids("[src:GH09116-16]") == ["GH09116-16"]
+
+    def test_partial_metadata_still_parses(self):
+        from backend.services.llm_tools import _format_src_tag
+
+        for args in (
+            ("GH09116-16", "Peter Rådberg", None, None),
+            ("GH09116-16", None, "MP", None),
+            ("GH09116-16", None, None, "2009-11-12"),
+            ("GH09116-16", "Peter Rådberg", "MP", None),
+        ):
+            assert self._ids(_format_src_tag(*args)) == ["GH09116-16"], args
+
+    def test_tag_survives_renumbering(self):
+        from backend.services.llm_tools import _format_src_tag
+
+        reg = ProvenanceRegistry()
+        reg.register(_make_record("GH09116-16", speaker="Peter Rådberg", party="MP",
+                                  date="2009-11-12"))
+        tag = _format_src_tag("GH09116-16", "Peter Rådberg", "MP", "2009-11-12")
+        _answer, _sources, cited, invalid = parse_and_renumber_citations(
+            f"The fleet was cut{tag}.", reg
+        )
+        assert cited == ["GH09116-16"]
+        assert invalid == []

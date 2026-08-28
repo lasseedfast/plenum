@@ -29,9 +29,10 @@ sys.path.insert(0, str(ROOT))
 PROMPTS: dict[str, tuple[str, str]] = {
     "chat/orchestrator": ("backend.services.chat", "ORCHESTRATOR_SYSTEM"),
     "chat/worker": ("backend.services.chat", "WORKER_SYSTEM"),
-    "chat/editor": ("backend.services.chat", "EDITOR_SYSTEM"),
     "chat/fact_checker": ("backend.services.chat", "FACT_CHECKER_SYSTEM"),
     "chat/language_checker": ("backend.services.chat", "LANGUAGE_CHECKER_SYSTEM"),
+    "chat/paragraph_rewriter": ("backend.services.chat", "PARAGRAPH_REWRITER_SYSTEM"),
+    "chat/attribution_fixer": ("backend.services.chat", "ATTRIBUTION_FIXER_SYSTEM"),
     "chat/shadow_communicator": ("backend.services.chat", "_SHADOW_INSTRUCTION"),
     "chat/planner": ("backend.services.chat", "PLANNER_SYSTEM"),
     "chat/researcher": ("backend.services.chat", "RESEARCHER_SYSTEM"),
@@ -45,6 +46,18 @@ PROMPTS: dict[str, tuple[str, str]] = {
     "tools/reader": ("backend.services.llm_tools", "_READER_SYSTEM"),
 }
 
+# Prompts with no module-level constant to read back. The tool descriptions are
+# the largest prompt surface in the system — the model reads them on every turn —
+# so they belong under review even though they reach it through a decorator.
+# The persona is built per member at request time; snapshot the unfilled template.
+TOOL_DESCRIPTIONS: tuple[str, ...] = (
+    "database_query", "search_speeches", "vector_search", "vector_search_debates",
+    "fetch_debate", "fetch_speeches", "read_documents_for", "lookup_source",
+    "search_documents", "vector_search_documents", "fetch_document", "share_insight",
+)
+
+TEMPLATE_PROMPTS: tuple[str, ...] = ("chat/mp_persona",)
+
 
 def _resolve(module_name: str, attr: str) -> str:
     import importlib
@@ -53,15 +66,26 @@ def _resolve(module_name: str, attr: str) -> str:
 
 
 def _capture() -> dict[str, str]:
-    return {name: _resolve(mod, attr) for name, (mod, attr) in PROMPTS.items()}
+    from prompts_loader import load_prompt, tool_doc
+
+    captured = {name: _resolve(mod, attr) for name, (mod, attr) in PROMPTS.items()}
+    captured.update({f"tools/{n}": tool_doc(n) for n in TOOL_DESCRIPTIONS})
+    captured.update({n: load_prompt(n) for n in TEMPLATE_PROMPTS})
+    return captured
 
 
-@(pytest.mark.parametrize("name", sorted(PROMPTS)) if pytest else (lambda f: f))
+ALL_NAMES = sorted(
+    list(PROMPTS)
+    + [f"tools/{n}" for n in TOOL_DESCRIPTIONS]
+    + list(TEMPLATE_PROMPTS)
+)
+
+
+@(pytest.mark.parametrize("name", ALL_NAMES) if pytest else (lambda f: f))
 def test_prompt_matches_golden(name: str) -> None:
     path = GOLDEN / f"{name}.txt"
     assert path.exists(), f"No golden snapshot for {name}; run with --update to create one."
-    module, attr = PROMPTS[name]
-    assert _resolve(module, attr) == path.read_text(encoding="utf-8"), (
+    assert _capture()[name] == path.read_text(encoding="utf-8"), (
         f"Prompt {name} differs from its golden snapshot. If the change is "
         f"intended, re-run with --update and review the diff."
     )

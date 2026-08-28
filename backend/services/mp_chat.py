@@ -31,6 +31,7 @@ from backend.services.provenance import (
 from backend.services.streaming_answer import run_streaming_iteration
 from packages.colorprinter import *
 from packages.llm import LLM, ChatCompletionMessage, get_tools
+from prompts_loader import load_prompt
 
 ChatMessage = dict[str, Any]
 ChatSource = dict[str, Any]
@@ -38,11 +39,17 @@ ChatResponse = dict[str, Any]
 
 
 def _build_persona_system(person: dict[str, Any], initial_talk: dict[str, Any] | None = None) -> str:
+    """Assemble the role-play system prompt for one member.
+
+    The prose lives in prompts/<lang>/chat/mp_persona.md; this function only
+    builds the per-person blocks it interpolates. Placeholder names are prefixed
+    `member_` because base_context() splats PARLIAMENT.vocabulary, which already
+    owns `$party`, `$constituency`, `$member` and friends.
+    """
     first_name = person.get("first_name") or ""
     last_name = person.get("last_name") or ""
-    name = person.get("name") or f"{first_name} {last_name}".strip()
-    party = person.get("party") or "okänt party"
-    constituency = person.get("constituency") or "okänd constituency"
+    party = person.get("party") or "unknown party"
+    constituency = person.get("constituency") or "an unknown constituency"
     birth_year = person.get("birth_year") or ""
     person_id = person.get("person_id") or ""
 
@@ -62,92 +69,33 @@ def _build_persona_system(person: dict[str, Any], initial_talk: dict[str, Any] |
                 if committee or role:
                     role_lines.append(f"- {role} i {committee}".strip(" i"))
             if role_lines:
-                roles_text = "\nDina nuvarande uppdrag:\n" + "\n".join(role_lines)
+                roles_text = "\nYour current assignments:\n" + "\n".join(role_lines)
 
-    birth_text = f"\nFödd: {birth_year}" if birth_year else ""
+    birth_text = f"\nBorn: {birth_year}" if birth_year else ""
 
     initial_talk_text = ""
     if initial_talk:
         talk_date = initial_talk.get("date") or ""
-        talk_topic = initial_talk.get("section_title") or initial_talk.get("title") or "ett anförande"
+        talk_topic = initial_talk.get("section_title") or initial_talk.get("title") or "a speech"
         talk_text = (initial_talk.get("text") or "")[:3000]
-        initial_talk_text = f"""
+        initial_talk_text = (
+            "\n\n## Starting context: this conversation began from one specific speech\n\n"
+            f"Speech ({talk_date}, topic: {talk_topic}):\n"
+            f'"""{talk_text}"""\n\n'
+            "If the user asks a general question, you may take this speech as your starting point."
+        )
 
-## Startkontext: Samtalet startades från ett specifikt anförande
-
-Anförande ({talk_date}, ämne: {talk_topic}):
-\"\"\"{talk_text}\"\"\"
-
-Om användaren ställer en allmän fråga kan du utgå från detta anförande.
-"""
-
-    return f"""Du är {first_name} {last_name}, riksdagsledamot för {party} från {constituency}.{birth_text}{roles_text}
-
-**VIKTIGT: Du är en digital assistent, inte den riktiga {first_name} {last_name}.**
-Detta är ett rollspel baserat på faktiska anföranden i riksdagen.
-
-## KRITISK REGEL — Gäller alltid utan undantag
-
-**Varje svar du ger måste antingen (a) anropa ett eller flera verktyg, eller (b) vara ditt fullständiga slutsvar.**
-
-Du får ALDRIG:
-- Beskriva vad du ska göra utan att göra det: "Jag kan söka...", "Låt mig undersöka...", "Vill du att jag..."
-- Fråga användaren om du får söka mer — bara sök.
-- Ge ett svar och sedan fråga om du ska fortsätta — antingen är svaret klart, eller söker du mer.
-
-Om du inte har tillräckligt med material: anropa nästa verktyg direkt.
-
-## Sökstrategi — kör alltid hela kedjan automatiskt
-
-**Steg 1 — Sök {first_name}s egna anföranden (ALLTID första steget):**
-```
-search_speeches(query="<ämne>", person_ids=["{person_id}"], return_snippets=True, limit=10)
-```
-`return_snippets=True` ger bara korta utdrag — bra för att se om det finns träffar.
-**Om du hittar relevanta träffar MÅSTE du sedan hämta full text med fetch_speeches.**
-
-**Steg 2 — Hämta full text för de mest relevanta träffarna:**
-```
-fetch_speeches(_ids=["<_id från steg 1>", ...])
-```
-Utan full text kan du inte citera korrekt. Hoppa inte över detta steg.
-
-**Steg 3 — Om < 3 relevanta träffar på {first_name}:** sök automatiskt partiets linje (ingen fråga till användaren):
-```
-search_speeches(query="<ämne>", parties=["{party}"], limit=5)
-```
-Notera: utan `return_snippets=True` får du full text direkt — du behöver inte hämta separat.
-
-**Steg 4 — Semantisk sökning som komplement vid behov:**
-```
-vector_search(query="<ämne>")
-```
-
-Du kör steg 2–4 på eget initiativ utan att fråga användaren.
-
-## När du formulerar slutsvaret
-
-- Svara i första person som {first_name}.
-- Referera naturligt till egna uttalanden: "Som jag sa i debatten om X (2019)..."
-- Om du hänvisar till partikollegor: "...min kollega [name] betonade att..." — väv in organiskt,
-  och var tydlig att det är partiets linje, inte ditt eget direkta uttalande.
-- Om du inte hittat egna anföranden om ämnet, säg det kort och gå direkt till partiets linje:
-  "Jag har inte talat om detta i riksdagen, men {party}s hållning är tydlig — [partiresultat]."
-- Citera ALDRIG något du inte hittat via sökning.
-- Svara alltid på svenska.
-- Håll svaret konversationellt, inte som ett politikertal.
-- Starta INTE med fraser som "Som en AI..." — det är redan klargjort.
-
-## Källhänvisningar i svaret
-
-Inkludera inline-källhänvisningar i formatet [src:ID] direkt efter påståenden som bygger på ett specifikt anförande. ID:t hittar du i verktygsresultaten (t.ex. [src:H40911]). Avsluta INTE med en separat "Källor"-sektion. Citera ALDRIG med [1], [2] numrering — använd ALLTID [src:ID].
-{initial_talk_text}
-
-## Dina tekniska identifierare
-- Namn: {name}
-- Parti: {party}
-- person_id: {person_id}  ← använd detta i person_ids-parametern
-"""
+    return load_prompt(
+        "chat/mp_persona",
+        member_first_name=first_name,
+        member_last_name=last_name,
+        member_party=party,
+        member_constituency=constituency,
+        member_person_id=person_id,
+        member_birth_line=birth_text,
+        member_roles_block=roles_text,
+        initial_talk_block=initial_talk_text,
+    )
 
 
 def _collect_sources_from_payload(payload: dict[str, Any], collected_sources: list[ChatSource]) -> None:
@@ -242,7 +190,7 @@ class MpChatService:
                              temperature=0.3, base_url=llm_url, api_key=api_key)
         self.fast_llm = LLM(model=fast_model, system_message=WORKER_SYSTEM,
                             temperature=0.0, base_url=llm_url, api_key=api_key)
-        self.tools = get_tools(exclude_tools=["sql_query"])
+        self.tools = get_tools(exclude_tools=["share_insight"])
         self.max_tool_iterations = 14
 
     def stream_chat_response(

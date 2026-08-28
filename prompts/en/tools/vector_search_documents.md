@@ -1,0 +1,11 @@
+Semantic and conceptual search over motions ($document_plural), using chunk embeddings of
+the motion texts. It complements `search_documents` exactly as `vector_search` complements
+`search_speeches`.
+
+Speeches are the primary source — search them first. Reach for this when you need the
+concrete proposals behind a position, or when the question is explicitly about motions and
+the right keywords are not obvious.
+
+When NOT to use:
+- Exact word or phrase matching → `search_documents`
+- Counts or aggregations over motions → `database_query`

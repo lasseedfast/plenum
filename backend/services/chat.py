@@ -101,7 +101,10 @@ ORCHESTRATOR_SYSTEM = load_prompt("chat/orchestrator")
 
 WORKER_SYSTEM = load_prompt("chat/worker")
 
-EDITOR_SYSTEM = load_prompt("chat/editor")
+# System prompts for the two passes that actually mutate the answer.
+PARAGRAPH_REWRITER_SYSTEM = load_prompt("chat/paragraph_rewriter")
+
+ATTRIBUTION_FIXER_SYSTEM = load_prompt("chat/attribution_fixer")
 
 FACT_CHECKER_SYSTEM = load_prompt("chat/fact_checker")
 
@@ -142,7 +145,7 @@ class FinalAnswer(BaseModel):
 RESEARCH_MAX_SUBQUESTIONS = 3
 RESEARCH_ITERATIONS_PER_SUBQ = 5
 
-PLANNER_SYSTEM = load_prompt("chat/planner")
+PLANNER_SYSTEM = load_prompt("chat/planner", max_sub=RESEARCH_MAX_SUBQUESTIONS)
 
 RESEARCHER_SYSTEM = load_prompt("chat/researcher")
 
@@ -184,7 +187,7 @@ class ChatService:
         # provider_override with editor_model set will get a per-request LLM.
         self.editor_llm = LLM(
             model=SMART_MODEL,
-            system_message=EDITOR_SYSTEM,
+            system_message=FACT_CHECKER_SYSTEM,
             temperature=0.1,
             base_url=llm_url,
         )
@@ -209,10 +212,10 @@ class ChatService:
             base_url=llm_url,
         ))
         # Main orchestrator never calls share_insight — the shadow communicator does.
-        self.tools = get_tools(exclude_tools=["sql_query", "share_insight"])
+        self.tools = get_tools(exclude_tools=["share_insight"])
         # Shadow communicator gets only share_insight as its available tool so it
         # can decide IF and HOW to call it (plain insight, search_card, stats_card).
-        _all_tools = get_tools(exclude_tools=["sql_query"])
+        _all_tools = get_tools()
         self.communicator_tools = [
             t
             for t in _all_tools
@@ -277,7 +280,7 @@ class ChatService:
             model=editor_model,
             base_url=provider.base_url,
             api_key=key,
-            system_message=EDITOR_SYSTEM,
+            system_message=FACT_CHECKER_SYSTEM,
             temperature=0.1,
         )
         return smart, fast, communicator, editor, self.language_llm_chain, provider.supports_thinking
@@ -630,7 +633,7 @@ class ChatService:
         Returns None on planner failure — caller should fall back to running the
         orchestrator's tool loop directly.
         """
-        system = PLANNER_SYSTEM.format(max_sub=RESEARCH_MAX_SUBQUESTIONS)
+        system = PLANNER_SYSTEM
         prompt = (
             f"Användarens fråga:\n{user_question}\n\n"
             "Bryt ner i delfrågor enligt schemat ResearchRequest. "
@@ -2086,138 +2089,6 @@ class ChatService:
                 # Call share_insight — it publishes via _insight_callback set above.
                 share_insight(**args)
 
-    def _editor_pass(
-        self,
-        draft: str,
-        user_question: str,
-        registry: ProvenanceRegistry,
-        editor_llm,
-        event_callback: Callable[[dict[str, Any]], None] | None = None,
-    ) -> str:
-        """Run one fact-check + language-polish pass over the draft answer.
-
-        Fetches the full text for each cited source (capped so the editor
-        call stays within model context), hands them to the editor along with the
-        draft, and returns the rewritten draft. On any error the original draft is
-        returned unchanged so the user never gets worse output because of the pass.
-        """
-        # Collect only source IDs actually cited in the draft — no point paying for
-        # sources the orchestrator didn't use.
-        cited_ids_raw = _SRC_PATTERN.findall(draft)
-        seen: set[str] = set()
-        cited_ids: list[str] = []
-        for cid in cited_ids_raw:
-            if cid not in seen and registry.get(cid):
-                cited_ids.append(cid)
-                seen.add(cid)
-        if not cited_ids:
-            print_yellow("[Editor] no valid citations in draft; skipping editor pass")
-            return draft
-
-        # Fetch full talk texts for the cited sources.
-        from postgres_client import pg as _pg
-        try:
-            rows = _pg.execute(
-                "SELECT id, speaker_name, party, date::text AS date, text "
-                "FROM speeches WHERE id = ANY(%s::text[])",
-                (cited_ids,),
-            )
-        except Exception as exc:
-            print_red(f"[Editor] failed to fetch cited speeches: {exc}")
-            return draft
-        talks_by_id: dict[str, dict[str, Any]] = {r["id"]: r for r in rows}
-
-        # Budget source text so the full editor prompt stays bounded. 24 000 chars
-        # across N cited sources ≈ 6 000 tokens, leaving room for the draft, system
-        # prompt, and the editor's rewrite. Per-source cap scales with count.
-        TOTAL_BUDGET = 24_000
-        if cited_ids:
-            per_source = max(1_500, TOTAL_BUDGET // max(1, len(cited_ids)))
-        else:
-            per_source = 0
-
-        source_blocks: list[str] = []
-        for sid in cited_ids:
-            row = talks_by_id.get(sid)
-            if not row:
-                src = registry.get(sid)
-                if src:
-                    source_blocks.append(
-                        f"[src:{sid} | {src.speaker or '?'} ({src.party or '?'}) | {src.date or '?'}]\n"
-                        f"(Full talktext ej tillgänglig — använd snippet nedan)\n{src.snippet[:per_source]}"
-                    )
-                continue
-            text = (row.get("text") or "")[:per_source]
-            source_blocks.append(
-                f"[src:{sid} | {row['speaker_name']} ({row['party']}) | {row['date']}]\n{text}"
-            )
-
-        sources_text = "\n\n---\n\n".join(source_blocks)
-        user_prompt = (
-            f"Ursprunglig fråga:\n{user_question}\n\n"
-            f"### Utkast att granska\n\n{draft}\n\n"
-            f"### Citerade källor (fulltext, tryngd till budget)\n\n{sources_text}\n\n"
-            "Returnera ENDAST den reviderade markdown-texten."
-        )
-
-        if event_callback:
-            event_callback({"type": "status", "message": "Redaktör läser igenom svaret..."})
-
-        import time as _time
-        t0 = _time.time()
-        try:
-            response = editor_llm.generate(
-                messages=[
-                    {"role": "system", "content": EDITOR_SYSTEM},
-                    {"role": "user", "content": user_prompt},
-                ],
-                think=False,
-            )
-        except Exception as exc:
-            print_red(f"[Editor] generate() raised: {exc}")
-            return draft
-        elapsed_ms = int((_time.time() - t0) * 1000)
-
-        if isinstance(response, str):
-            # LLM wrapper swallowed an API error and returned a plain string.
-            print_red(f"[Editor] wrapper returned error string: {response[:200]}")
-            log_event("editor_pass_failure", detail=response[:200])
-            return draft
-
-        revised = getattr(response, "content", None) or ""
-        revised = revised.strip()
-        if not revised:
-            print_red("[Editor] empty response — keeping draft")
-            log_event("editor_pass_empty")
-            return draft
-
-        # Reject if the editor compressed the answer significantly — that means it
-        # summarised or rewrote rather than making targeted fixes.
-        if len(revised) < len(draft) * 0.85:
-            print_red(
-                f"[Editor] response too short ({len(revised)} vs {len(draft)} chars, "
-                f"{len(revised)/len(draft):.0%}) — editor likely rewrote instead of patching, keeping draft"
-            )
-            log_event("editor_pass_rejected", reason="too_short",
-                      draft_chars=len(draft), revised_chars=len(revised))
-            return draft
-
-        delta_chars = len(revised) - len(draft)
-        log_event(
-            "editor_pass_ran",
-            draft_chars=len(draft),
-            revised_chars=len(revised),
-            delta_chars=delta_chars,
-            duration_ms=elapsed_ms,
-            cited_sources=len(cited_ids),
-            model=getattr(editor_llm, "model", None),
-        )
-        print_green(
-            f"[Editor] rewrote draft: {len(draft)} → {len(revised)} chars "
-            f"(Δ {delta_chars:+d}) in {elapsed_ms} ms"
-        )
-        return revised
-
     def _fix_with_fact_check_feedback(
         self,
         answer_body: str,
@@ -2428,14 +2299,7 @@ class ChatService:
             try:
                 rw_response = smart_llm.generate(
                     messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "Du är en skicklig svensk textredaktör. Du gör minimala rättelser "
-                                "baserat på faktaredaktörens återkoppling. Du rör inte stycken du "
-                                "inte har fått instruktioner om att rätta."
-                            ),
-                        },
+                        {"role": "system", "content": PARAGRAPH_REWRITER_SYSTEM},
                         {"role": "user", "content": rewrite_prompt},
                     ],
                     think=False,
@@ -2732,13 +2596,7 @@ class ChatService:
             try:
                 response = editor_llm.generate(
                     messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "Du är en noggrann faktaredaktör. Du rättar felaktiga personattribueringar "
-                                "i texter om riksdagsdebatter. Du returnerar ENBART det korrigerade stycket."
-                            ),
-                        },
+                        {"role": "system", "content": ATTRIBUTION_FIXER_SYSTEM},
                         {"role": "user", "content": user_prompt},
                     ],
                     think=False,

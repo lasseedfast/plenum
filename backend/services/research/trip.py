@@ -34,6 +34,10 @@ log = logging.getLogger("riksdagen.research.trip")
 
 # Tools a trip may use. share_insight/lookup_source are chat-turn plumbing;
 # fetch_speeches dumps raw text — trips use read_documents_for instead.
+# The motion tools are included because the research prompts promise motions as a
+# source: without them a trip cannot reach a single one. Motion hits carry
+# metadata kind="motion" and a bare doc_id key, so _collect_seen and _ground
+# accept them exactly like speech hits.
 RESEARCH_TOOLS = [
     "search_speeches",
     "vector_search",
@@ -41,6 +45,9 @@ RESEARCH_TOOLS = [
     "fetch_debate",
     "database_query",
     "read_documents_for",
+    "search_documents",
+    "vector_search_documents",
+    "fetch_document",
 ]
 
 RESEARCH_TOOL_RESULT_CHARS = int(os.getenv("RESEARCH_TOOL_RESULT_CHARS", "4000"))

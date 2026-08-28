@@ -1,0 +1,126 @@
+**Database schema for `database_query`** — these are the only columns that exist. Never
+invent one; a query against a column not listed here fails outright.
+
+`speeches` — one row per speech held in the chamber
+  id (TEXT, PK)          speech id, e.g. '$speech_id_example'
+  speaker_name (TEXT)    who held it
+  party (TEXT)           party code — see the note on party values below
+  person_id (TEXT)       join key to people
+  date (DATE)            cast when selecting: date::text
+  year (INT)             calendar year
+  session_year (INT)     session ($session) start year
+  activity_type (TEXT)   chamber activity / debate type
+  debate_id (TEXT)       join key to debates.id (NULL for many older speeches)
+  sequence (INT)         position within the source document
+  is_reply (BOOL)        true for replies in an exchange
+  summary (TEXT)         generated summary
+  tags (TEXT[])          tagged topics
+  title (TEXT)           title of the *protocol* the speech came from, not of the speech
+  text (TEXT)            full text — search it via search_vector, never directly
+  search_vector          FTS index over the text
+
+`people` — one row per member
+  person_id (TEXT, PK)   join key to speeches and document_authors
+  name (TEXT)            canonical name
+  party (TEXT)           party affiliation
+  birth_year (INT), gender (TEXT), active (BOOL), constituency (TEXT)
+
+`debates` — one row per debate
+  id (TEXT, PK)          '$debate_id_example' — date, colon, index
+  date (DATE), summary (TEXT), num_talks (INT), talk_ids (TEXT[])
+  Some rows still have a NULL summary.
+
+`documents` — one row per motion ($document)
+  doc_id (TEXT, PK)      e.g. '$doc_id_example'
+  session_label (TEXT)   session ($session) label, e.g. '2022/23'
+  session_year (INT)     session ($session) start year — there is no plain "year" column here
+  date (DATE)            submission date
+  title (TEXT), subtype (TEXT), committee (TEXT), status (TEXT)
+  parties (TEXT[])       party codes of all authors
+  author_names (TEXT[])  authors in signing order
+  num_proposals (INT)    number of proposals
+  text (TEXT)            full text — search via search_vector
+  search_vector          FTS index over title + proposals + text
+
+`document_authors` — one row per signatory
+  doc_id (TEXT)          join key to documents
+  person_id (TEXT)       join key to people (may be NULL for older documents)
+  name (TEXT), party (TEXT), role (TEXT)
+  ordinal (INT)          signing order, 0 = first author
+
+`document_proposals` — one row per formal proposal ($proposal)
+  id (TEXT, PK)          '{doc_id}:{ordinal}'
+  doc_id (TEXT)          join key to documents
+  ordinal (INT), number (TEXT)
+  text (TEXT)            the proposal text itself, short and precise
+  committee_recommendation (TEXT)   what the committee recommended
+  chamber_decision (TEXT)           what the chamber decided — read the note below
+  handled_in (TEXT)                 the committee report where it was handled
+
+**Joins**: `speeches.person_id = people.person_id` · `speeches.debate_id = debates.id` ·
+`document_authors.doc_id = documents.doc_id` · `document_proposals.doc_id = documents.doc_id`.
+
+**Content search in SQL — always full-text, never LIKE.**
+
+- Use `WHERE search_vector @@ websearch_to_tsquery('$fts_config', '...')`. It uses the GIN
+  index and supports plain words, "quoted phrases", `OR`, `-` for exclusion, and stemming.
+- **Never** `text @@ ...` — it bypasses the index and scans the whole table.
+- **Never** `LIKE` / `ILIKE` on `text` — slow, and wrong: 'ai' matches 'Thai' and 'Ukraine'.
+- **Never** put `search_vector @@ ...` in a `SELECT`, `SUM` or `CASE` — it then runs per row
+  without the index and takes 30–60 seconds. For two full-text counts, use two CTEs that
+  each filter in `WHERE`:
+
+      WITH a AS (SELECT id, party FROM speeches
+                 WHERE search_vector @@ websearch_to_tsquery('$fts_config', 'q1')),
+           b AS (SELECT id FROM speeches
+                 WHERE search_vector @@ websearch_to_tsquery('$fts_config', 'q2'))
+      SELECT a.party, COUNT(*) AS total, COUNT(b.id) AS matches
+        FROM a LEFT JOIN b USING (id) GROUP BY 1
+
+- Cast dates when selecting them: `date::text`.
+- Include `person_id` in your `SELECT` on `speeches`, so results link back to a speaker.
+- Party filter on documents: `parties && ARRAY['S']` matches any co-author; `unnest(parties)`
+  groups per party.
+
+**Party values.** The real party codes are $party_codes. But `speeches.party` also contains
+NULL and the chair's titles (`TALMANNEN`, `FÖRSTE VICE TALMANNEN`, and so on) — those are
+procedural remarks from whoever was presiding, not a party. Exclude them when counting per
+party, or they appear as parties in your results.
+
+**Reading `chamber_decision` correctly.** A proposal's outcome is not a clean yes/no, and
+filtering on `'Bifall'` alone is the most common way to get a badly wrong answer — it covers
+barely one percent of the rows. The values are:
+
+- `Avslag` — rejected. The large majority of proposals.
+- `Bifall` — approved outright. Rare.
+- `Delvis bifall` — partly approved.
+- `= utskottet` / `=utskottet` — the chamber followed the committee. **Both spellings occur**
+  and together they cover a large share of the data. To know what actually happened, read
+  `committee_recommendation` for these rows.
+- `NULL` — not decided, or not applicable.
+
+So: to count what a party got through, account for `Bifall`, `Delvis bifall`, and the
+`= utskottet` rows whose `committee_recommendation` was an approval. If you report a single
+number, say which of these it covers.
+
+**Examples**
+
+    -- speeches per party
+    SELECT party, COUNT(*) AS cnt FROM speeches
+      WHERE party IN ($party_codes_sql)
+      GROUP BY party ORDER BY cnt DESC
+
+    -- most active speakers in one party
+    SELECT speaker_name, person_id, COUNT(*) AS cnt FROM speeches
+      WHERE party = 'M' GROUP BY 1, 2 ORDER BY cnt DESC LIMIT 10
+
+    -- speeches on a topic per party, using the index
+    SELECT party, COUNT(*) AS cnt FROM speeches
+      WHERE search_vector @@ websearch_to_tsquery('$fts_config', 'artificiell intelligens OR AI')
+      GROUP BY party ORDER BY cnt DESC
+
+    -- how one party's proposals fared
+    SELECT p.chamber_decision, p.committee_recommendation, COUNT(*) AS cnt
+      FROM document_proposals p JOIN documents d USING (doc_id)
+      WHERE d.parties && ARRAY['C']
+      GROUP BY 1, 2 ORDER BY cnt DESC

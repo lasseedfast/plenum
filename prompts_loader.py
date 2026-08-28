@@ -98,6 +98,9 @@ def base_context() -> dict[str, Any]:
         "answer_language_native": PARLIAMENT.language.name or PARLIAMENT.language.prompt_language,
         "preserve_characters": PARLIAMENT.language.preserve_characters,
         "party_codes": ", ".join(PARLIAMENT.party_codes),
+        # Ready to drop into a SQL IN (...) list, so a prompt can show a working
+        # example without hardcoding one parliament's parties.
+        "party_codes_sql": ", ".join(f"'{c}'" for c in PARLIAMENT.party_codes),
         "date_today": date.today().isoformat(),
         "person_id_example": ids.get("person_id", {}).get("example", ""),
         "speech_id_example": ids.get("speech_id", {}).get("example", ""),

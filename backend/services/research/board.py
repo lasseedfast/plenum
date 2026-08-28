@@ -432,7 +432,8 @@ def merge_research(thread: dict, res: ThreadResearch) -> dict:
 
 
 def _search_material(query: str, seen_ids: set, *,
-                     debates_limit: int = 4, talks_limit: int = 14) -> str:
+                     debates_limit: int = 4, talks_limit: int = 14,
+                     motions_limit: int = 6) -> str:
     """Direct tool calls (no agent loop) that ground discovery in material
     that actually exists in the corpus. Hits whose ids are already in
     ``seen_ids`` are skipped (and new ids added), so repeated calls across
@@ -443,7 +444,7 @@ def _search_material(query: str, seen_ids: set, *,
     is what steers discovery toward party/issue threads instead of comparing
     individual debates by date. ``debates_limit=0`` skips the debate summaries
     (they carry no party attribution)."""
-    from backend.services.llm_tools import search_speeches, vector_search_debates
+    from backend.services.llm_tools import search_documents, search_speeches, vector_search_debates
 
     parts: list[str] = []
     # Speeches (anföranden): named speaker + party — the substance for positions.
@@ -452,20 +453,43 @@ def _search_material(query: str, seen_ids: set, *,
         search_speeches(query=query, return_snippets=True, limit=talks_limit)
         structured = _tool_structured_result.get()
         if isinstance(structured, SearchHitsResult) and structured.response.hits:
-            lines = ["ANFÖRANDEN (party — speaker_name: utdrag [id]):"]
+            lines = ["ANFÖRANDEN ([parti] talare: utdrag [id]):"]
             for h in structured.response.hits:
                 if h.key in seen_ids:
                     continue
                 seen_ids.add(h.key)
                 snip = (h.snippet or h.text or "").replace("\n", " ")[:260]
-                party = h.party or "okänt party"
-                who = h.speaker or "Okänd speaker_name"
+                party = h.party or "okänt parti"
+                who = h.speaker or "okänd talare"
                 dt = f", {h.date}" if h.date else ""
                 lines.append(f"- [{party}] {who}: {snip} [{h.key}{dt}]")
             if len(lines) > 1:
                 parts.append("\n".join(lines))
     except Exception:
         log.exception("discovery: search_speeches failed")
+    # Motions (motioner): what members formally proposed, with party attribution.
+    # The discovery prompts offer motions as a source, so the scout has to ground
+    # in them too — otherwise no proposed thread can ever be about one.
+    if motions_limit > 0:
+        try:
+            _tool_structured_result.set(None)
+            search_documents(query=query, return_snippets=True, limit=motions_limit)
+            structured = _tool_structured_result.get()
+            if isinstance(structured, SearchHitsResult) and structured.response.hits:
+                lines = ["MOTIONER ([parti] författare: utdrag [id]):"]
+                for h in structured.response.hits:
+                    if h.key in seen_ids:
+                        continue
+                    seen_ids.add(h.key)
+                    snip = (h.snippet or h.text or "").replace("\n", " ")[:260]
+                    party = h.party or "okänt parti"
+                    who = h.speaker or "okänd författare"
+                    dt = f", {h.date}" if h.date else ""
+                    lines.append(f"- [{party}] {who}: {snip} [{h.key}{dt}]")
+                if len(lines) > 1:
+                    parts.append("\n".join(lines))
+        except Exception:
+            log.exception("discovery: search_documents failed")
     # Debate summaries: topical context only (no party attribution).
     if debates_limit > 0:
         try:
@@ -524,7 +548,7 @@ def scout_material(fast_llm, topic: str, rounds: int = RESEARCH_SCOUT_ROUNDS,
         searched.append(q)
         if on_event:
             on_event(q)
-        extra = _search_material(q, seen_ids, talks_limit=6, debates_limit=0)
+        extra = _search_material(q, seen_ids, talks_limit=6, debates_limit=0, motions_limit=3)
         if extra:
             material = f"{material}\n\n{extra}" if material else extra
 

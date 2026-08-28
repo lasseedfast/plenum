@@ -29,7 +29,7 @@ from backend.services.search import MotionSearchService, SearchService
 from packages.colorprinter import *
 from packages.llm import LLM, register_tool
 from postgres_client import pg
-from prompts_loader import load_prompt
+from prompts_loader import load_prompt, tool_doc
 
 # Statements the model is allowed to run. Anything else is refused before it
 # reaches the database.
@@ -105,15 +105,20 @@ def _format_src_tag(
     The orchestrator uses bare [src:ID] tags for citation tracking; this richer
     variant is injected after summarisation so the orchestrator still sees the
     attribution metadata even if the fast model stripped the original tags.
+
+    The pipe form is not cosmetic: provenance._SRC_PATTERN accepts `[src:ID]` and
+    `[src:ID | anything]`, and nothing else. A space-separated tag parses as no
+    citation at all, so an orchestrator that copied one verbatim — exactly what it
+    is told to do — silently lost the source. tests/test_provenance.py pins the two
+    together.
     """
-    parts = [bare_id]
-    if speaker:
-        parts.append(speaker)
+    if not (speaker or party or date):
+        return f"[src:{bare_id}]"
+    who = speaker or ""
     if party:
-        parts.append(party)
-    if date:
-        parts.append(str(date))
-    return f"[src:{' '.join(parts)}]"
+        who = f"{who} ({party})".strip()
+    tail = [part for part in (who, str(date) if date else "") if part]
+    return f"[src:{bare_id} | {' | '.join(tail)}]"
 
 
 class HitsResponse(BaseModel):
@@ -171,149 +176,18 @@ _fast_llm_var: ContextVar[Any | None] = ContextVar(
 # database_query
 # ─────────────────────────────────────────────────────────────────────────────
 
-@register_tool()
+@register_tool(description=tool_doc("database_query"))
 def database_query(sql: str) -> str:
     """Execute a SQL query against the Riksdag speeches database (PostgreSQL).
+
+    The description the model reads lives in prompts/<lang>/tools/database_query.md;
+    parameter docs below still come from this docstring.
 
     Args:
         sql: A PostgreSQL SELECT query string.
 
     Returns:
         Query result formatted as a string (raw result or error message).
-
-    Use this tool for structured queries on metadata: party breakdowns, aggregations,
-    speaker statistics, and comparisons. Not for fuzzy/semantic search (use vector_search
-    or search_speeches instead).
-
-    ✅ WHEN TO USE:
-    - Counting or ranking: "how many speeches per party?", "top 10 speakers by year?"
-    - Aggregations: votes per party, speeches over time periods, joins with demographics
-    - Full-text aggregations: "how many speeches per party mentioned AI?" (using FTS)
-
-    ❌ WHEN NOT TO USE:
-    - Semantic/conceptual search → use vector_search
-    - Exact phrase or keyword search → use search_speeches
-    - Fetching full documents → use fetch_speeches
-
-    DATABASE SCHEMA:
-
-    speeches table:
-      id (TEXT)              - Speech ID (e.g. 'H40911-1')
-      speaker_name (TEXT)          - Speaker name
-      party (TEXT)           - Party code (S, M, V, KD, C, MP, SD, L, FP)
-      year (INT)             - Year of speech
-      date (DATE)           - Date of speech (cast to text: date::text)
-      person_id (TEXT)   - Speaker ID (join key to people table)
-      activity_type (TEXT) - Debate type/chamber activity
-      text (TEXT)   - Full speech text (use search_vector for searching)
-      summary (TEXT)         - Speech summary
-      sequence (INT) - Speech number within debate
-      debate (TEXT)          - Debate name
-      is_reply (TEXT)          - Reply indicator
-      tags (TEXT[])          - Tagged topics
-      related_doc_id (TEXT)      - Related document ID
-      title (TEXT)           - Speech title
-
-    people table:
-      person_id (TEXT)   - Speaker ID (join key to speeches)
-      name (TEXT)            - Canonical speaker name
-      party (TEXT)           - Party affiliation
-      birth_year (INT)          - Birth year
-      gender (TEXT)             - Gender
-      active (BOOL)           - Active status
-      constituency (TEXT)        - Electoral district
-
-    debates table:
-      debate (TEXT, PK)      - Debate id of form "{YYYY-MM-DD}:{n}", matches speeches.debate
-      date (DATE)           - Debate date (cast to text: date::text)
-      summary (TEXT)         - LLM-generated debate summary
-      num_talks (INT)        - Number of speeches in the debate
-      talk_ids (TEXT[])      - Array of talk ids in the debate
-      Note: some rows have NULL summary/summary_embedding (still backfilling).
-
-    documents table (motioner — written proposals from MPs):
-      doc_id (TEXT, PK)      - Motion id (e.g. 'HD02846')
-      session_label (TEXT)              - Riksmöte (e.g. '2022/23')
-      session_year (INT)     - Riksmöte start year (NOT "year" — that column doesn't exist)
-      date (DATE)           - Submission date (cast to text: date::text)
-      title (TEXT)           - Motion title
-      subtype (TEXT)          - e.g. 'Enskild motion', 'Kommittémotion', 'Partimotion'
-      committee (TEXT)           - Committee it was referred to (e.g. 'AU', 'UU')
-      status (TEXT)          - e.g. 'Klar', 'Inkommen'
-      parties (TEXT[])       - Party codes of all authors (use && for overlap: parties && ARRAY['S'])
-      author_names (TEXT[])  - Author names in signing order
-      num_proposals (INT)     - Number of proposals in the motion
-      text (TEXT)            - Full motion text (use search_vector for searching)
-      search_vector          - FTS index over title + yrkanden + text: search_vector @@ websearch_to_tsquery('swedish', ...)
-
-    document_authors table (one row per signatory):
-      doc_id (TEXT)          - Join key to documents
-      person_id (TEXT)   - Join key to people (may be NULL for pre-2000 documents)
-      name (TEXT)            - Author name
-      party (TEXT)        - Party code
-      ordinal (INT)          - Signing order (0 = first author)
-
-    document_proposals table (one row per formal proposal/yrkande — condensed & precise):
-      id (TEXT, PK)          - "{doc_id}:{ordinal}"
-      doc_id (TEXT)          - Join key to documents
-      number (TEXT)          - Proposal number as stated in the motion
-      text (TEXT)         - The proposal text itself (short, to the point)
-      committee_recommendation (TEXT)       - Committee proposal (e.g. 'Avslag')
-      chamber_decision (TEXT)        - Chamber decision (e.g. 'Avslag'/'Bifall')
-      handled_in (TEXT)     - Committee report where handled
-
-    CRITICAL NOTES:
-    - Use ONLY the column names listed above (do NOT invent columns)
-    - For full-text search, use: search_vector @@ websearch_to_tsquery('swedish', 'query')
-      This uses the GIN index (fast); do NOT use LIKE/ILIKE on text (slow + wrong results)
-    - websearch_to_tsquery supports: plain words, "quoted phrases", OR, - (exclude), Swedish stemming
-    - NEVER put search_vector @@ tsquery in a SELECT or SUM/CASE — it runs per-row without
-      the index and causes 30-60 s queries. If you need two FTS counts, use two CTEs with WHERE:
-        WITH a AS (SELECT id, party FROM speeches WHERE search_vector @@ tsquery('q1')),
-             b AS (SELECT id FROM speeches WHERE search_vector @@ tsquery('q2'))
-        SELECT a.party, COUNT(*) total, COUNT(b.id) matches FROM a LEFT JOIN b USING(id) GROUP BY 1
-    - Join speeches and people: speeches.person_id = people.person_id
-    - Include `person_id` in SELECT when querying speeches to link back to speakers
-
-    EXAMPLES:
-
-      # Count speeches per party
-      SELECT party, COUNT(*) AS cnt FROM speeches GROUP BY party ORDER BY cnt DESC
-
-      # Top 10 speakers in a party
-      SELECT speaker_name, COUNT(*) AS cnt FROM speeches WHERE party = 'M'
-        GROUP BY speaker_name ORDER BY cnt DESC LIMIT 10
-
-      # Speeches per year for a party, with speaker birth year
-      SELECT t.year, p.birth_year, COUNT(*) AS cnt
-        FROM speeches t JOIN people p ON t.person_id = p.person_id
-        WHERE t.party = 'S' AND t.year >= 2015
-        GROUP BY t.year, p.birth_year ORDER BY t.year
-
-      # Count speeches mentioning a topic per party (using FTS with GIN index)
-      SELECT party, COUNT(*) AS cnt FROM speeches
-        WHERE search_vector @@ websearch_to_tsquery('swedish', 'artificiell intelligens OR AI')
-        GROUP BY party ORDER BY cnt DESC
-
-      # Count speeches about climate per year (FTS)
-      SELECT year, COUNT(*) AS cnt FROM speeches
-        WHERE search_vector @@ websearch_to_tsquery('swedish', 'klimat')
-        GROUP BY year ORDER BY year
-
-      # Count documents about nuclear power per party (any co-author's party counts)
-      SELECT unnest(parties) AS party, COUNT(*) AS cnt FROM documents
-        WHERE search_vector @@ websearch_to_tsquery('swedish', 'kärnkraft')
-        GROUP BY party ORDER BY cnt DESC
-
-      # Most active motion authors in a year
-      SELECT a.name, a.party, COUNT(*) AS cnt
-        FROM document_authors a JOIN documents m ON a.doc_id = m.doc_id
-        WHERE m.session_year = 2023 AND a.ordinal = 0
-        GROUP BY a.name, a.party ORDER BY cnt DESC LIMIT 10
-
-    To surface results to the user as a stats card, call share_insight(sql="...", message="...")
-    and pass the same SQL query; the backend re-executes it automatically.
-
     """
     print_blue(f"[database_query] SQL:\n{sql}")
 
@@ -421,29 +295,12 @@ def database_query(sql: str) -> str:
 # vector_search  (unified: speech_chunks + summaries, merged by speech_id)
 # ─────────────────────────────────────────────────────────────────────────────
 
-@register_tool()
+@register_tool(description=tool_doc("vector_search"))
 def vector_search(query: str, limit: int = 10) -> HitsResponse:
     """
-    Semantic/conceptual search over Riksdag speeches. Blends two sources of signal
-    under the hood so the caller does not have to choose:
 
-      - chunk embeddings   → granular, quote-ready passages
-      - summary embeddings → thematic, whole-speech gist
-
-    Results are merged by speech_id; when a talk is strong in both indexes it is
-    returned once with the chunk passage as the snippet and the summary attached
-    in metadata. Each hit is tagged with metadata["source_type"] ∈ {"chunk",
-    "summary", "both"} so you can tell which signal fired.
-
-    Use this tool when:
-    - The user asks a thematic or conceptual question and exact keywords may not appear.
-    - You want speeches similar in meaning to a phrase or idea.
-    - You want a blended view of both whole-talk overview and specific passages.
-
-    When NOT to use:
-    - Exact word/phrase matching → use search_speeches
-    - Counts, aggregations, statistics → use database_query
-    - You already know the speaker/party/year filter → use search_speeches with filters
+    The description the model reads lives in prompts/<lang>/tools/vector_search.md;
+    parameter docs below still come from this docstring.
 
     Args:
         query: Natural-language description of the topic.
@@ -576,30 +433,12 @@ def vector_search(query: str, limit: int = 10) -> HitsResponse:
 # vector_search_debates  (discovery — not citable)
 # ─────────────────────────────────────────────────────────────────────────────
 
-@register_tool()
+@register_tool(description=tool_doc("vector_search_debates"))
 def vector_search_debates(query: str, limit: int = 5) -> HitsResponse:
     """
-    Semantic discovery tool that finds relevant parliamentary debates (whole
-    sessions, not individual speeches) by their LLM-written summaries.
 
-    This is a NAVIGATION tool. Use it to locate interesting debates, then call
-    `fetch_debate(debate_id)` to see the speeches inside. Do NOT cite a debate
-    directly — cite the individual speeches you read via `fetch_debate`.
-
-    Workflow:
-        vector_search_debates("klimatmål 2045")
-        → returns ~5 debates with ids like "2021-06-17:42"
-        → pick the most relevant → fetch_debate("2021-06-17:42")
-        → read talk summaries → cite with [src:TALK_ID] in your answer
-
-    Use this tool when:
-    - The user asks a broad thematic question that likely spans a whole session.
-    - You want a quick map of which debates touched a topic before drilling in.
-
-    When NOT to use:
-    - You want individual speech hits → use vector_search or search_speeches
-    - You already have a debate_id → call fetch_debate directly
-    - Counts/aggregations → use database_query
+    The description the model reads lives in prompts/<lang>/tools/vector_search_debates.md;
+    parameter docs below still come from this docstring.
 
     Args:
         query: Natural-language description of the topic.
@@ -663,16 +502,12 @@ def vector_search_debates(query: str, limit: int = 5) -> HitsResponse:
 FETCH_DEBATE_SUMMARY_BUDGET_CHARS = 7000
 
 
-@register_tool()
+@register_tool(description=tool_doc("fetch_debate"))
 def fetch_debate(debate_id: str, query: str | None = None) -> dict:
     """
-    Look up a single debate by its id and return a list of its speeches with
-    per-talk summaries. Registers each returned talk as a citable source.
 
-    Typical flow: call `vector_search_debates(query)` to discover relevant
-    debate ids, then call `fetch_debate(debate_id, query=query)` on the best
-    match. Passing the same `query` lets the tool rank speeches by semantic
-    relevance when the debate is too long to return in full.
+    The description the model reads lives in prompts/<lang>/tools/fetch_debate.md;
+    parameter docs below still come from this docstring.
 
     Args:
         debate_id: Debate id of the form "{YYYY-MM-DD}:{n}" (e.g. "2021-06-17:42").
@@ -843,18 +678,12 @@ def fetch_debate(debate_id: str, query: str | None = None) -> dict:
 # fetch_speeches
 # ─────────────────────────────────────────────────────────────────────────────
 
-@register_tool()
+@register_tool(description=tool_doc("fetch_speeches"))
 def fetch_speeches(_ids: list[str], collection: str = "", fields: list = None) -> list:
     """
-    Fetch full documents by their id from the speeches table.
 
-    Use this tool when:
-    - search_speeches or vector_search returned _ids and you need the full speech text.
-    - You want specific fields for a known set of documents.
-
-    When NOT to use:
-    - To search → use search_speeches or vector_search
-    - To count/aggregate → use database_query
+    The description the model reads lives in prompts/<lang>/tools/fetch_speeches.md;
+    parameter docs below still come from this docstring.
 
     Args:
         _ids: List of document IDs (e.g. ["speeches/H40911", "speeches/H40912"] or bare keys)
@@ -968,20 +797,12 @@ def _get_reader_llm():
     return _default_reader_llm
 
 
-@register_tool()
+@register_tool(description=tool_doc("read_documents_for"))
 def read_documents_for(question: str, _ids: list[str]) -> str:
     """
-    Read the FULL text of up to 6 speeches/documents and get a focused answer
-    to ONE specific question about them.
 
-    Use this tool when:
-    - You need to know what specific documents actually SAY about something
-      (positions, arguments, exact statements) — not just their metadata.
-    - A snippet or summary is too sparse and you would otherwise fetch full text.
-
-    When NOT to use:
-    - To search → use search_speeches or vector_search.
-    - When the user explicitly asks to see the complete raw text → fetch_speeches.
+    The description the model reads lives in prompts/<lang>/tools/read_documents_for.md;
+    parameter docs below still come from this docstring.
 
     Args:
         question: One concrete question in Swedish, e.g.
@@ -1168,7 +989,7 @@ def _normalize_search_args(
     }
 
 
-@register_tool()
+@register_tool(description=tool_doc("search_speeches"))
 def search_speeches(
     query: str,
     parties: list[str] | None = None,
@@ -1181,7 +1002,9 @@ def search_speeches(
     person_ids: str | list[str] | bool | None = None,
 ) -> "SearchHitsResult":
     """
-    Perform a full-text and metadata search in the Riksdagen 'speeches' table using PostgreSQL FTS.
+
+    The description the model reads lives in prompts/<lang>/tools/search_speeches.md;
+    parameter docs below still come from this docstring.
 
     Args:
         query: The search string (supports AND, OR, NOT, phrases in quotes, år:2018-2022).
@@ -1196,19 +1019,6 @@ def search_speeches(
 
     Returns:
         SearchHitsResult with hits and search metadata.
-
-    Possible to use `return_snippets=True` to only return snippets with highlights instead of
-    full documents, which can be useful to get an overview of the results. Use this if you're not sure the results are relevant and want to quickly scan them before deciding to fetch full documents.
-    If searching for specific words or phrases, consider using quotes (") for phrases,
-    AND/OR/NOT operators, and year ranges (e.g., år:2018-2022).
-    Always use a limit to avoid too many results. Hits are ranked by relevance (ts_rank_cd).
-
-    This tool uses advanced text search (with stemming, language analysis, and ranking) and
-    can also filter by party, speaker, debate type, and year range.
-
-    When NOT to use:
-      - Fuzzy/semantic similarity → use vector_search
-      - Exact aggregations, joins, or structured metadata queries → use database_query
     """
     # Validate person_ids: they must be purely numeric strings.
     # If the model passes a placeholder like "PERS_ID_FOR_X", reject the whole call
@@ -1351,7 +1161,7 @@ def search_speeches(
 # Motioner (written proposals from MPs) — search, semantic search, fetch
 # ─────────────────────────────────────────────────────────────────────────────
 
-@register_tool()
+@register_tool(description=tool_doc("search_documents"))
 def search_documents(
     query: str,
     parties: list[str] | None = None,
@@ -1364,14 +1174,9 @@ def search_documents(
     person_ids: str | list[str] | bool | None = None,
 ) -> "SearchHitsResult":
     """
-    Full-text and metadata search over MOTIONER (written proposals submitted by MPs),
-    as opposed to search_speeches which searches chamber SPEECHES (anföranden).
 
-    Speeches (anföranden) are the PRIMARY source — search them first with
-    search_speeches/vector_search. Use this tool as a COMPLEMENT: to deepen research
-    with the concrete proposals (yrkanden) behind positions found in speeches, to
-    add committee/chamber outcomes, or when the user explicitly asks about motioner
-    ("vad har X föreslagit/motionerat om?", "vilka motioner finns om Y?").
+    The description the model reads lives in prompts/<lang>/tools/search_documents.md;
+    parameter docs below still come from this docstring.
 
     Args:
         query: The search string (supports AND, OR, NOT, phrases in quotes, år:2018-2022).
@@ -1388,11 +1193,6 @@ def search_documents(
     Returns:
         SearchHitsResult. Hit ids look like "documents/HD02846"; metadata includes title,
         committee (committee), session_label (riksmöte) and num_proposals. Cite with [src:DOK_ID].
-
-    When NOT to use:
-      - Chamber speeches/debates → search_speeches or vector_search
-      - Fuzzy/semantic similarity over documents → vector_search_documents
-      - Counts/aggregations → database_query (documents table)
     """
     if person_ids:
         ids_list = (
@@ -1510,24 +1310,12 @@ def search_documents(
     return output
 
 
-@register_tool()
+@register_tool(description=tool_doc("vector_search_documents"))
 def vector_search_documents(query: str, limit: int = 10) -> HitsResponse:
     """
-    Semantic/conceptual search over MOTIONER (written proposals from MPs), using
-    chunk embeddings of the motion texts. Complements search_documents the same way
-    vector_search complements search_speeches.
 
-    Speeches (anföranden) are the PRIMARY source — search them first. Use this
-    tool as a complement when:
-    - You want to deepen speech-based findings with what MPs formally proposed
-      and exact keywords may not appear in the motion text.
-    - The user explicitly asks about motioner, or speeches gave no coverage.
-    - You want documents similar in meaning to a phrase or idea.
-
-    When NOT to use:
-    - Exact word/phrase matching in documents → search_documents
-    - Chamber speeches → vector_search
-    - Counts/aggregations → database_query
+    The description the model reads lives in prompts/<lang>/tools/vector_search_documents.md;
+    parameter docs below still come from this docstring.
 
     Args:
         query: Natural-language description of the topic.
@@ -1669,14 +1457,12 @@ _YRKANDE_KEYS = (
 )
 
 
-@register_tool()
+@register_tool(description=tool_doc("fetch_document"))
 def fetch_document(doc_id: str) -> dict:
     """
-    Fetch one motion by its doc_id: metadata, all authors, all yrkanden (proposals)
-    with committee and chamber outcomes, and the full text.
 
-    Typical flow: search_documents / vector_search_documents → pick a hit →
-    fetch_document(doc_id) to read the yrkanden and full text.
+    The description the model reads lives in prompts/<lang>/tools/fetch_document.md;
+    parameter docs below still come from this docstring.
 
     Args:
         doc_id: Motion id, e.g. "HD02846" or "documents/HD02846".
@@ -1784,7 +1570,7 @@ def fetch_document(doc_id: str) -> dict:
     return result
 
 
-@register_tool()
+@register_tool(description=tool_doc("share_insight"))
 def share_insight(
     message: str,
     speaker_ids: list = None,
@@ -1795,6 +1581,9 @@ def share_insight(
     rows: list = None,
 ) -> dict:
     """Surface a concrete finding to the user while you continue researching.
+
+    The description the model reads lives in prompts/<lang>/tools/share_insight.md;
+    parameter docs below still come from this docstring.
 
     Args:
         message (str): Brief observation in Swedish (1–3 sentences). Be specific and concrete.
@@ -1818,23 +1607,6 @@ def share_insight(
 
     Returns:
         dict: Consumed by ChatService to emit a search_card, stats_card, or insight SSE event.
-
-    Examples:
-        >>> share_insight(
-        ...     message="60 % av SD:s AI-debatter 2019–2022 hölls av tre speaker_name.",
-        ...     speaker_ids=["0448485371626", "0448485371627", "0448485371628"],
-        ...     speaker_ids_context="Dessa tre speaker_name stod för 60 % av SD:s AI-debatter 2019–2022.",
-        ... )
-
-        >>> share_insight(
-        ...     message="Lista över politiker som nämnt 'artificiell intelligens' i sina tal, och hur många gånger var.",
-        ...     sql="SELECT speaker_name, COUNT(*) AS cnt FROM speeches WHERE text @@ websearch_to_tsquery('swedish', 'artificiell intelligens') GROUP BY speaker_name ORDER BY cnt DESC",
-        ... )
-
-        >>> share_insight(
-        ...     message="Debatten om Luftvärn präglas av två huvudstrider: valet av vapensystem och kopplingen mellan antal stridsflygplan och luftvärsbehov.",
-        ...     hit_ids=["H40911", "H40912", "H40913", "H40914", "H40915"],
-        ... )
     """
     # Resolve hit_ids → hits by querying the speeches table (documents as fallback)
     if hit_ids and not hits:
@@ -1949,15 +1721,12 @@ def share_insight(
             })
 
 
-@register_tool()
+@register_tool(description=tool_doc("lookup_source"))
 def lookup_source(source_ids: list[str]) -> str:
     """Återhämta lagrad grundtext för en eller flera tidigare registrerade källor.
 
-    Sökverktyg (`search_speeches`, `vector_search`, `fetch_debate`, `fetch_speeches`)
-    komprimeras automatiskt i meddelandehistoriken: bara `[src:ID]` plus en kort
-    rubrikrad sparas. När du behöver det faktiska textinnehållet (t.ex. för att
-    citera ordagrant eller verifiera ett påstående) — anropa det här verktyget
-    med en lista av tal-id:n du redan sett.
+    The description the model reads lives in prompts/<lang>/tools/lookup_source.md;
+    parameter docs below still come from this docstring.
 
     Args:
         source_ids: Lista av bara tal-id:n (t.ex. ["H40911", "GH09100"]) eller
