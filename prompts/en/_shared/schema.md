@@ -43,12 +43,15 @@ and handles quoted phrases, `OR`, `-` to exclude, and stemming. It covers the te
       SELECT a.party, COUNT(*) total, COUNT(b.id) matches
         FROM a LEFT JOIN b USING (id) GROUP BY 1
 
-- Party filter on documents: `parties && ARRAY['$party_code_example']` matches any
-  co-author; `unnest(parties)` groups per party.
-- **`document_authors.party` is not normalised** — the same party appears as `C` and `c`,
-  `MP`, `Mp` and `mp`. Always compare it case-insensitively (`upper(a.party) = 'C'`), or you
-  silently lose about a quarter of the rows. `speeches.party`, `people.party` and
-  `documents.parties` are clean; this one column is not.
+- **Party codes on documents are not case-normalised in older rows** (everything before
+  about 2001): the same party is stored as both `C` and `c`, `MP` and `mp`. Always fold the
+  case, in both places it bites:
+  - `document_authors.party` — use `upper(a.party) = '$party_code_example'`. A plain `=`
+    loses roughly a quarter of the rows, with no error.
+  - `unnest(parties)` — group on `upper(p)`, or one party comes back as two rows.
+  - `parties && ARRAY['$party_code_example']` is safe as it stands: those arrays carry both
+    casings, so the overlap still matches.
+  `speeches.party` and `people.party` are clean — this is a documents-side problem only.
 
 **Party values.** The real codes are $party_codes. `speeches.party` also holds NULL and
 $non_party_values — the presiding chair, not a party. Exclude those from per-party counts.
