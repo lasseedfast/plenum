@@ -59,16 +59,6 @@ and handles quoted phrases, `OR`, `-` to exclude, and stemming. It covers the te
       SELECT a.party, COUNT(*) total, COUNT(b.id) matches
         FROM a LEFT JOIN b USING (id) GROUP BY 1
 
-- **Party codes on documents are not case-normalised in older rows** (everything before
-  about 2001): the same party is stored as both `C` and `c`, `MP` and `mp`. Always fold the
-  case, in both places it bites:
-  - `document_authors.party` — use `upper(a.party) = 'S'`. A plain `=`
-    loses roughly a quarter of the rows, with no error.
-  - `unnest(parties)` — group on `upper(p)`, or one party comes back as two rows.
-  - `parties && ARRAY['S']` is safe as it stands: those arrays carry both
-    casings, so the overlap still matches.
-  `speeches.party` and `people.party` are clean — this is a documents-side problem only.
-
 **Party values.** The real codes are S, M, SD, C, V, KD, MP, L. `speeches.party` also holds NULL and
 `TALMANNEN`, `FÖRSTE VICE TALMANNEN`, `ANDRE VICE TALMANNEN`, `TREDJE VICE TALMANNEN` — the presiding chair, not a party. Exclude those from per-party counts.
 

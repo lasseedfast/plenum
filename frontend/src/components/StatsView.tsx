@@ -12,6 +12,16 @@ export function StatsView({ stats, meta }: Props) {
 		.map(([year, value]) => ({ year, value }))
 		.sort((a, b) => Number(a.year) - Number(b.year));
 
+	// Fold the case: the codes arrive from a SQL GROUP BY, and a slice whose colour
+	// depends on how the database happened to spell it is a bug that raises nothing.
+	// Older motion rows held `c` next to `C`, and the symptom was a slice rendering in
+	// the unknown-party grey. That data is normalised now; this keeps it from mattering
+	// again.
+	const partyColor = (code: string) =>
+		meta?.parties?.find((p) => p.code.toUpperCase() === code.toUpperCase())?.color ??
+		meta?.party_defaults?.unknown_color ??
+		"#999";
+
 	return (
 		<section className="stats-view panel">
 			<header>
@@ -24,7 +34,7 @@ export function StatsView({ stats, meta }: Props) {
 						<PieChart>
 							<Pie data={partyEntries} dataKey={1} nameKey={0} innerRadius={60} outerRadius={100}>
 								{partyEntries.map(([party]) => (
-									<Cell key={party} fill={meta?.parties?.find((p) => p.code === party)?.color ?? meta?.party_defaults?.unknown_color ?? "#999"} />
+									<Cell key={party} fill={partyColor(party)} />
 								))}
 							</Pie>
 							<Tooltip />

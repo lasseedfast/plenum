@@ -87,38 +87,46 @@ def test_no_invented_columns(claimed):
     assert not invented, f"prompt names columns that do not exist: {invented}"
 
 
-def test_warns_about_columns_whose_case_is_not_normalised():
-    """A column holding both `C` and `c` silently undercounts any equality filter.
+def test_party_columns_are_case_normalised():
+    """Every party column holds one casing, so a plain `=` filter is safe.
 
-    Found via a smoke run: `document_authors.party = 'C'` returns 33,776 rows where
-    a case-insensitive compare returns 46,652 — a 28 % undercount, with no error to
-    notice. The prompt has to say so; the other party columns are clean.
+    This replaces a pair of tests that asserted the opposite. `document_authors.party`
+    and `documents.parties` used to hold the same party as both `C` and `c`, so
+    `party = 'C'` returned 33,776 rows where a case-insensitive compare returned
+    46,652 — a 28 % undercount with no error to notice. The prompt carried a warning
+    telling the model to fold the case, and a tripwire test here failed the day the
+    data was cleaned, so the warning could not outlive the problem. Both are gone;
+    `_postgres/migrations/20260828_01_normalise_party_case.sql` did the backfill.
+
+    What is left is the guard in the other direction. Ingest uppercases on the way in,
+    but that is one `.upper()` in one adapter — if it is ever dropped, this fails
+    before anyone notices a quarter of the rows going missing from a count.
     """
-    from prompts_loader import load_prompt
-
-    schema = load_prompt("_shared/schema")
-    assert "document_authors.party" in schema
-    assert "upper(" in schema, "schema block must show a case-insensitive comparison"
-
-
-def test_case_sensitivity_claim_still_holds():
-    """If ingest ever normalises the data, this warning becomes misleading."""
     try:
         from postgres_client import pg
 
         pg.execute("SELECT 1")
-    except Exception as exc:
+    except Exception as exc:  # no database in this environment
         pytest.skip(f"database unreachable: {exc}")
 
-    mixed = pg.execute(
-        "SELECT COUNT(*) AS c FROM document_authors WHERE party <> upper(party)"
-    )[0]["c"]
-    assert mixed > 0, (
-        "document_authors.party is now normalised — drop the case warning from "
-        "prompts/en/_shared/schema.md, it no longer applies."
-    )
-    for table, column in (("speeches", "party"), ("people", "party")):
-        clean = pg.execute(
+    for table, column in (
+        ("document_authors", "party"),
+        ("speeches", "party"),
+        ("people", "party"),
+    ):
+        mixed = pg.execute(
             f"SELECT COUNT(*) AS c FROM {table} WHERE {column} <> upper({column})"
         )[0]["c"]
-        assert clean == 0, f"{table}.{column} is now mixed-case too — the prompt says it is clean"
+        assert mixed == 0, (
+            f"{table}.{column} has {mixed} mixed-case rows — ingest has stopped "
+            "normalising party codes, and equality filters are now undercounting."
+        )
+
+    unfolded = pg.execute(
+        "SELECT COUNT(*) AS c FROM documents"
+        " WHERE EXISTS (SELECT 1 FROM unnest(parties) p WHERE p <> upper(p))"
+    )[0]["c"]
+    assert unfolded == 0, (
+        f"documents.parties has {unfolded} rows with a lowercase entry — grouping on"
+        " unnest(parties) will split one party into two rows."
+    )
