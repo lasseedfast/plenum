@@ -127,6 +127,43 @@ def test_the_always_on_block_stays_small():
     assert "\u00b7 " not in text, "the compact block must not carry per-column notes"
 
 
+def test_the_migration_matches_the_database():
+    """The migration is what a rebuilt database gets, so it must be the truth.
+
+    Comments are easy to tune with ad-hoc SQL and forget to write down. When that
+    happens the drift is invisible until someone restores from scratch, runs the
+    migration, and finds the generated prompt no longer matches — which is the
+    same failure this whole mechanism exists to prevent, one level up.
+    """
+    import re
+
+    sql = (ROOT / "_postgres" / "migrations" / "add_column_comments.sql").read_text(
+        encoding="utf-8"
+    )
+    in_migration = {
+        m.group(1): m.group(2).replace("''", "'")
+        for m in re.finditer(
+            r"COMMENT ON COLUMN\s+(\S+)\s+IS\s+'((?:[^']|'')*)'", sql
+        )
+    }
+    in_database = {
+        f"{r['table_name']}.{r['column_name']}": r["comment"] for r in _rows()
+    }
+    drifted = sorted(
+        k for k in set(in_migration) | set(in_database)
+        if in_migration.get(k) != in_database.get(k)
+    )
+    assert not drifted, (
+        "These column comments differ between the migration and the database. "
+        "The migration is what a fresh install applies, so it has to match:\n  "
+        + "\n  ".join(
+            f"{k}\n      migration: {in_migration.get(k)!r}\n"
+            f"      database:  {in_database.get(k)!r}"
+            for k in drifted[:12]
+        )
+    )
+
+
 def test_the_model_is_only_told_about_tables_it_may_read():
     """The prompt and the SQL guard must describe the same six tables.
 
