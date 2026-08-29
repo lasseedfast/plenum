@@ -146,10 +146,20 @@ class LLM:
         body = dict(self.extra_body or {})
 
         effective_think = self.think if think is None else think
-        if not effective_think and not self._is_external_provider:
-            ctk = dict(body.get("chat_template_kwargs") or {})
-            ctk["enable_thinking"] = False
-            body["chat_template_kwargs"] = ctk
+        if not effective_think:
+            if self._is_external_provider:
+                # `chat_template_kwargs` is a vLLM concept and is stripped below, so
+                # without this `think=False` was silently ignored on hosted providers
+                # and every call reasoned at full effort. The OpenAI-compatible
+                # equivalent is a `reasoning` block. Ask for the least the provider
+                # will give: some models (GLM 5.3 among them) reject
+                # `{"enabled": false}` outright with "reasoning is mandatory for this
+                # endpoint", so "low" is the floor that works everywhere.
+                body.setdefault("reasoning", {"effort": "low"})
+            else:
+                ctk = dict(body.get("chat_template_kwargs") or {})
+                ctk["enable_thinking"] = False
+                body["chat_template_kwargs"] = ctk
 
         if self._is_external_provider:
             for key in _VLLM_ONLY_EXTRA_BODY:
