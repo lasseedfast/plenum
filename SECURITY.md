@@ -13,31 +13,49 @@ might appear, because the corpus reaches the model's context: speech and documen
 text is fetched and shown to it, so anyone who can get text into the parliament's
 record — which, in a parliament, is the point — can attempt a prompt injection.
 
-Two layers apply, and the second is the one that counts:
+Four layers apply:
 
-1. Statements are refused unless they begin with `SELECT` or `WITH`, and multiple
-   statements are rejected outright — that is how a write gets smuggled in behind a
+1. Statements are refused unless they begin with `SELECT` or `WITH`.
+2. Multiple statements are rejected — that is how a write gets smuggled in behind a
    leading `SELECT`.
-2. The query runs inside a `SET TRANSACTION READ ONLY` transaction, so PostgreSQL
-   itself rejects `INSERT`, `UPDATE`, `DELETE` and DDL regardless of what the first
-   check concluded.
+3. The query may only name the corpus tables (`speeches`, `people`, `debates`,
+   `documents`, `document_authors`, `document_proposals`). Anything else is refused,
+   including through a join, a subquery, a CTE or a `UNION`.
+4. The query runs inside a `SET TRANSACTION READ ONLY` transaction, so PostgreSQL
+   itself rejects `INSERT`, `UPDATE`, `DELETE` and DDL regardless of what the earlier
+   checks concluded.
+
+Layer 3 is the one that keeps generated SQL away from the application's own tables.
+**`READ ONLY` does not do this** — it stops writes, not reads, and the same database
+holds `users`, `auth_tokens` and the chat sessions. That gap was real: before layer 3
+existed, asking the live site to list the rows in `users` worked.
 
 The same applies to `share_insight`, which re-executes SQL stored in saved
 conversations — replayed SQL is no more trustworthy than freshly generated SQL.
 
-**Still run plenum against a database role that only has `SELECT`.** Defence in depth
-means not relying on any single layer, and the ingest pipeline needs write access
-that the web application never should have:
+### Run model SQL as a role that cannot read anything else
+
+Layer 3 is a parser, and a parser can be fooled. The guarantee is a database role that
+was never granted `SELECT` on the other tables:
 
 ```sql
-CREATE ROLE plenum_ro LOGIN PASSWORD '...';
-GRANT CONNECT ON DATABASE plenum TO plenum_ro;
-GRANT USAGE ON SCHEMA public TO plenum_ro;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO plenum_ro;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO plenum_ro;
+CREATE ROLE plenum_llm LOGIN PASSWORD '...' NOINHERIT;
+GRANT CONNECT ON DATABASE plenum TO plenum_llm;
+GRANT USAGE ON SCHEMA public TO plenum_llm;
+GRANT SELECT ON speeches, people, debates,
+                documents, document_authors, document_proposals TO plenum_llm;
 ```
 
-The ingest pipeline needs write access and should use a separate role.
+Set `PG_LLM_USER` and `PG_LLM_PASSWORD` and the tool connects as this role; leave them
+unset and it falls back to the main connection with a warning.
+
+Deliberately no `GRANT ... ON ALL TABLES` and no `ALTER DEFAULT PRIVILEGES`: a table
+added later should be unreadable until someone grants it explicitly.
+
+Note that **the application as a whole cannot run read-only** — it writes chat sessions,
+auth records and event logs. Two roles are needed, not one: the application's own role
+with write access to its tables, and this one for model-authored SQL. The ingest
+pipeline needs write access to the corpus and should use a third.
 
 ## API keys
 

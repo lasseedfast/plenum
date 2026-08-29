@@ -28,25 +28,150 @@ from pydantic import BaseModel, Field
 from backend.services.search import MotionSearchService, SearchService
 from packages.colorprinter import *
 from packages.llm import LLM, register_tool
-from postgres_client import pg
+from postgres_client import pg, pg_llm
 from prompts_loader import load_prompt, tool_doc
 
-# Statements the model is allowed to run. Anything else is refused before it
-# reaches the database.
+# Guard for model-authored SQL.
 #
-# This is defence in depth, not the defence: pg.execute_readonly() opens a
-# READ ONLY transaction, so PostgreSQL rejects writes even if a statement gets
-# past this check. The check exists to give the model a clear, correctable error
-# instead of a database exception, and to catch multi-statement payloads.
+# Corpus text reaches the model's context, and in a parliament anyone able to
+# speak can get text into the corpus — so treat generated SQL as untrusted.
+#
+# Four checks, and it is worth being clear about what each one is for:
+#   1. only SELECT / WITH may run;
+#   2. one statement only — a second statement is how a write gets smuggled in
+#      behind a leading SELECT;
+#   3. the query may only name the corpus tables;
+#   4. pg.execute_readonly() opens a READ ONLY transaction.
+#
+# (4) stops writes, not reads, and this database also holds users, auth_tokens
+# and chat sessions — so (3) is the only thing keeping generated SQL away from
+# them. Even (3) is not the real guarantee: it is a parser, and a parser can be
+# fooled. The guarantee is connecting as a role that was never granted SELECT on
+# anything else (see SECURITY.md). This layer earns its place by giving the model
+# a clear, correctable message instead of a permission error.
 _ALLOWED_SQL = _re_guard.compile(r"^\s*(?:WITH|SELECT)\b", _re_guard.IGNORECASE)
+
+# The corpus. Everything else in the database is off limits to generated SQL.
+_LLM_READABLE_TABLES = frozenset({
+    "speeches", "people", "debates",
+    "documents", "document_authors", "document_proposals",
+})
+
+# Set-returning functions that read no table, so they are safe in FROM position.
+# `unnest` is in the prompt's own guidance for the array columns.
+_ALLOWED_TABLE_FUNCTIONS = frozenset({"unnest", "generate_series"})
+
+_SQL_COMMENTS = _re_guard.compile(r"--[^\n]*|/\*.*?\*/", _re_guard.DOTALL)
+_SQL_STRINGS = _re_guard.compile(r"'(?:[^']|'')*'")
+_IDENT = r'(?:"[^"]*"|[A-Za-z_][A-Za-z_0-9$]*)'
+_QUALIFIED_IDENT = _re_guard.compile(rf"{_IDENT}(?:\s*\.\s*{_IDENT})*")
+_CTE_NAME = _re_guard.compile(
+    rf"(?:\bWITH\b|,)\s*(?:RECURSIVE\s+)?({_IDENT})\s+AS\b", _re_guard.IGNORECASE
+)
+_FROM_OR_JOIN = _re_guard.compile(r"\b(?:FROM|JOIN)\b", _re_guard.IGNORECASE)
+# Seeing one of these means the FROM list is over, so it is not a table or alias.
+_CLAUSE_KEYWORDS = frozenset({
+    "where", "group", "order", "limit", "offset", "having", "union", "intersect",
+    "except", "on", "using", "join", "inner", "left", "right", "full", "cross",
+    "natural", "window", "fetch", "for", "as", "lateral", "with", "select",
+})
+
+
+def _strip_literals(sql: str) -> str:
+    """Blank out comments and string literals.
+
+    Without this, a search term that happens to contain a table name —
+    websearch_to_tsquery('swedish', 'users') — would read as a table reference.
+    """
+    return _SQL_STRINGS.sub("''", _SQL_COMMENTS.sub(" ", sql))
+
+
+def _normalise_ident(raw: str) -> str:
+    return raw.replace('"', "").strip().lower()
+
+
+def _skip_space(sql: str, pos: int) -> int:
+    while pos < len(sql) and sql[pos].isspace():
+        pos += 1
+    return pos
+
+
+def _referenced_tables(sql: str) -> tuple[set[str], set[str]]:
+    """Names in FROM/JOIN position, as (tables, set-returning functions).
+
+    Handles comma-separated lists, aliases, quoting and schema qualification.
+    A subquery contributes nothing directly — its own FROM is found by the same
+    scan, which runs over the whole statement rather than one clause.
+    """
+    tables: set[str] = set()
+    functions: set[str] = set()
+    for match in _FROM_OR_JOIN.finditer(sql):
+        pos = match.end()
+        while True:
+            pos = _skip_space(sql, pos)
+            if pos >= len(sql) or sql[pos] == "(":
+                break  # subquery or VALUES list
+            ident = _QUALIFIED_IDENT.match(sql, pos)
+            if not ident:
+                break
+            raw = ident.group(0)
+            if _normalise_ident(raw.split(".")[0]) in _CLAUSE_KEYWORDS:
+                break
+            pos = ident.end()
+            after = _skip_space(sql, pos)
+            if after < len(sql) and sql[after] == "(":
+                functions.add(_normalise_ident(raw.rsplit(".", 1)[-1]))
+                depth = 0
+                pos = after
+                while pos < len(sql):
+                    if sql[pos] == "(":
+                        depth += 1
+                    elif sql[pos] == ")":
+                        depth -= 1
+                        if depth == 0:
+                            pos += 1
+                            break
+                    pos += 1
+            else:
+                # Keep the schema: public.users and pg_catalog.pg_tables must
+                # both be judged, not just their tails.
+                tables.add(".".join(_normalise_ident(p) for p in raw.split(".")))
+            # An optional alias, with or without AS, then the rest of the list.
+            pos = _skip_space(sql, pos)
+            alias = _QUALIFIED_IDENT.match(sql, pos)
+            if alias and _normalise_ident(alias.group(0)) not in _CLAUSE_KEYWORDS:
+                pos = alias.end()
+            elif alias and _normalise_ident(alias.group(0)) == "as":
+                pos = _skip_space(sql, alias.end())
+                named = _QUALIFIED_IDENT.match(sql, pos)
+                if named:
+                    pos = named.end()
+            pos = _skip_space(sql, pos)
+            if pos < len(sql) and sql[pos] == ",":
+                pos += 1
+                continue
+            break
+    return tables, functions
+
+
+def _forbidden_tables(sql: str) -> list[str]:
+    """Names the query reads that are not corpus tables. Deny by default, so a
+    table added to the database later is invisible until someone allows it."""
+    cleaned = _strip_literals(sql)
+    ctes = {_normalise_ident(m.group(1)) for m in _CTE_NAME.finditer(cleaned)}
+    tables, functions = _referenced_tables(cleaned)
+    forbidden = []
+    for name in sorted(tables):
+        bare = name[len("public."):] if name.startswith("public.") else name
+        if "." in bare or (bare not in _LLM_READABLE_TABLES and bare not in ctes):
+            forbidden.append(name)
+    forbidden += [f"{fn}()" for fn in sorted(functions)
+                  if fn not in _ALLOWED_TABLE_FUNCTIONS]
+    return forbidden
 
 
 def _reject_unsafe_sql(sql: str) -> str | None:
-    """Return an error message if this SQL must not run, else None.
-
-    Corpus text reaches the model's context, and in a parliament anyone able to
-    speak can get text into the corpus — so treat generated SQL as untrusted.
-    """
+    """Return an error message if this SQL must not run, else None."""
     stripped = sql.strip().rstrip(";").strip()
     if not _ALLOWED_SQL.match(stripped):
         first = (stripped.split() or ["(empty)"])[0]
@@ -59,6 +184,13 @@ def _reject_unsafe_sql(sql: str) -> str | None:
         return (
             "REFUSED: multiple statements are not allowed. "
             "Send one SELECT (a WITH clause may precede it)."
+        )
+    forbidden = _forbidden_tables(stripped)
+    if forbidden:
+        return (
+            f"REFUSED: this tool reads the parliamentary corpus only, and "
+            f"{', '.join(forbidden)} is not part of it. Readable tables: "
+            f"{', '.join(sorted(_LLM_READABLE_TABLES))}."
         )
     return None
 
@@ -233,7 +365,7 @@ def database_query(sql: str) -> str:
         return refusal
 
     try:
-        rows = pg.execute_readonly(sql)
+        rows = pg_llm.execute_readonly(sql)
     except Exception as e:
         print_red(f"[database_query] Error: {e}")
         return f"ERROR executing SQL: {e}"
@@ -1667,7 +1799,7 @@ def share_insight(
             print_red(f"[share_insight] {refusal}")
             return refusal
         try:
-            rows = pg.execute_readonly(sql)
+            rows = pg_llm.execute_readonly(sql)
         except Exception as e:
             print_red(f"[share_insight] Failed to execute sql: {e}")
             rows = [{"error": str(e)}]
