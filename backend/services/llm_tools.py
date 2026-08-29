@@ -308,6 +308,22 @@ _fast_llm_var: ContextVar[Any | None] = ContextVar(
 # database_query
 # ─────────────────────────────────────────────────────────────────────────────
 
+@register_tool(description=tool_doc("database_schema"))
+def database_schema() -> str:
+    """Return the full database reference.
+
+    The always-on `database_query` description carries only the column names, which is
+    what stops the model inventing one. The rest — coverage caveats, decision values,
+    the party-casing trap, worked queries — is ~1,400 tokens that most turns never need,
+    so it is fetched on demand rather than paid for on every request.
+
+    Returns:
+        The schema reference as markdown.
+    """
+    print_blue("[database_schema] full reference requested")
+    return load_prompt("_shared/schema")
+
+
 @register_tool(description=tool_doc("database_query"))
 def database_query(sql: str) -> str:
     """Execute a SQL query against the Riksdag speeches database (PostgreSQL).

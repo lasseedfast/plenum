@@ -44,6 +44,7 @@ RESEARCH_TOOLS = [
     "vector_search_debates",
     "fetch_debate",
     "database_query",
+    "database_schema",
     "read_documents_for",
     "search_documents",
     "vector_search_documents",

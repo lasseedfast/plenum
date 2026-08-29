@@ -29,6 +29,8 @@ MAX_NOTE_CHARS = 80
 # ~729 tokens today; this cap leaves room to describe a new column without letting
 # the block quietly double.
 MAX_BLOCK_TOKENS = 800
+# The compact block goes out with every request; the full one only on demand.
+MAX_ALWAYS_ON_TOKENS = 400
 CHARS_PER_TOKEN = 3.54
 
 HIDE = "[hide]"
@@ -76,17 +78,19 @@ def test_notes_stay_short():
     )
 
 
-def test_generated_prompt_is_current():
-    """The committed file must match what the database would produce now."""
-    from scripts.generate_schema_prompt import OUT, build
+@pytest.mark.parametrize("notes", [True, False], ids=["full", "compact"])
+def test_generated_prompt_is_current(notes):
+    """Both committed files must match what the database would produce now."""
+    from scripts.generate_schema_prompt import OUT, OUT_COMPACT, build
 
+    path = OUT if notes else OUT_COMPACT
     try:
-        expected = build()
+        expected = build(notes=notes)
     except Exception as exc:
         pytest.skip(f"database not reachable: {str(exc).splitlines()[0][:80]}")
-    assert OUT.exists(), f"{OUT} is missing — run scripts/generate_schema_prompt.py"
-    assert OUT.read_text(encoding="utf-8") == expected, (
-        f"{OUT.relative_to(ROOT)} is out of date. Run:\n"
+    assert path.exists(), f"{path} is missing — run scripts/generate_schema_prompt.py"
+    assert path.read_text(encoding="utf-8") == expected, (
+        f"{path.relative_to(ROOT)} is out of date. Run:\n"
         "    python scripts/generate_schema_prompt.py"
     )
 
@@ -101,6 +105,26 @@ def test_generated_block_stays_within_budget():
         f"The schema block is ~{tokens:.0f} tokens, over the {MAX_BLOCK_TOKENS} budget. "
         "Shorten the column notes, or hide a column that is not earning its place."
     )
+
+
+def test_the_always_on_block_stays_small():
+    """The compact block rides in every request, so it is the one to watch.
+
+    It carries column names but no notes: the names are what stop the model
+    inventing one, and the explanation is what `database_schema` exists to serve.
+    """
+    from scripts.generate_schema_prompt import OUT_COMPACT
+
+    if not OUT_COMPACT.exists():
+        pytest.skip("compact schema block not generated yet")
+    text = OUT_COMPACT.read_text(encoding="utf-8")
+    tokens = len(text) / CHARS_PER_TOKEN
+    assert tokens <= MAX_ALWAYS_ON_TOKENS, (
+        f"The always-on schema block is ~{tokens:.0f} tokens, over "
+        f"{MAX_ALWAYS_ON_TOKENS}. It is sent with every request — move detail into "
+        "prompts/en/_shared/schema.md, which database_schema serves on demand."
+    )
+    assert "\u00b7 " not in text, "the compact block must not carry per-column notes"
 
 
 def test_the_model_is_only_told_about_tables_it_may_read():

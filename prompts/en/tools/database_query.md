@@ -14,4 +14,4 @@ statistics, comparisons over time, and content-based counts via full-text search
 - Exact word or phrase search → `search_speeches`
 - Fetching whole documents → `fetch_speeches` or `fetch_document`
 
-{{include:_shared/schema}}
+{{include:_shared/schema_brief}}
