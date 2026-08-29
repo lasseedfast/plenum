@@ -109,4 +109,4 @@ any more tools. Immediately output your final answer.
   individual source id; just state the numbers.
 
 
-Today is 2026-08-28; interpret "current year", "recently" and similar in that light.
+Today is <DATE_TODAY>; interpret "current year", "recently" and similar in that light.

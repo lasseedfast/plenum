@@ -65,13 +65,27 @@ def _resolve(module_name: str, attr: str) -> str:
     return getattr(importlib.import_module(module_name), attr)
 
 
+def _stabilise(text: str) -> str:
+    """Blank out values that change on their own, so the diff shows real edits.
+
+    $date_today renders as the current date, which made every snapshot containing
+    it fail the day after it was captured — a daily false alarm that teaches you
+    to re-run --update without reading the diff, which is the one habit these
+    snapshots exist to prevent.
+    """
+    from prompts_loader import base_context
+
+    today = str(base_context().get("date_today") or "")
+    return text.replace(today, "<DATE_TODAY>") if today else text
+
+
 def _capture() -> dict[str, str]:
     from prompts_loader import load_prompt, tool_doc
 
     captured = {name: _resolve(mod, attr) for name, (mod, attr) in PROMPTS.items()}
     captured.update({f"tools/{n}": tool_doc(n) for n in TOOL_DESCRIPTIONS})
     captured.update({n: load_prompt(n) for n in TEMPLATE_PROMPTS})
-    return captured
+    return {name: _stabilise(text) for name, text in captured.items()}
 
 
 ALL_NAMES = sorted(
