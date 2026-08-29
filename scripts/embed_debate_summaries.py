@@ -28,11 +28,11 @@ LOG_INTERVAL = 200
 def embed_debate_summaries() -> int:
     missing = pg.execute(
         """
-        SELECT debate, summary
+        SELECT id, summary
         FROM debates
         WHERE summary IS NOT NULL AND summary != ''
           AND summary_embedding IS NULL
-        ORDER BY debate
+        ORDER BY id
         """
     )
     total = len(missing)
@@ -46,9 +46,9 @@ def embed_debate_summaries() -> int:
         batch = missing[i : i + EMBED_BATCH]
         texts = [row["summary"] for row in batch]
         embeddings = pg.make_embeddings(texts)
-        params = [(emb, row["debate"]) for row, emb in zip(batch, embeddings, strict=False)]
+        params = [(emb, row["id"]) for row, emb in zip(batch, embeddings, strict=False)]
         pg.execute_many(
-            "UPDATE debates SET summary_embedding = %s WHERE debate = %s",
+            "UPDATE debates SET summary_embedding = %s WHERE id = %s",
             params,
         )
         processed += len(batch)

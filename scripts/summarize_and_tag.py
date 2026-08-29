@@ -136,7 +136,7 @@ def fetch_reply_context(debate: str, sequence: int) -> list[dict]:
         """
         SELECT speaker_name, party, sequence, summary
         FROM speeches
-        WHERE debate = %s AND sequence = 1
+        WHERE debate_id = %s AND sequence = 1
         LIMIT 1
         """,
         (debate,),
@@ -147,7 +147,7 @@ def fetch_reply_context(debate: str, sequence: int) -> list[dict]:
         """
         SELECT speaker_name, party, sequence, summary
         FROM speeches
-        WHERE debate = %s AND sequence = %s
+        WHERE debate_id = %s AND sequence = %s
         LIMIT 1
         """,
         (debate, sequence - 1),

@@ -130,7 +130,7 @@ def process_debate_date(date: str, system_message: str) -> None:
             SELECT id, text, sequence, date::text AS date,
                    is_reply, speaker_name, party
             FROM speeches
-            WHERE debate = %s
+            WHERE debate_id = %s
             ORDER BY sequence ASC
             """,
             (debate,),
@@ -211,7 +211,7 @@ def process_ready_debate(debate_id: str, system_message: str) -> None:
         SELECT id, summary, sequence, date::text AS date,
                speaker_name, party
         FROM speeches
-        WHERE debate = %s
+        WHERE debate_id = %s
         ORDER BY sequence ASC
         """,
         (debate_id,),

@@ -531,9 +531,9 @@ def fetch_debate(debate_id: str, query: str | None = None) -> dict:
 
     debate_rows = pg.execute(
         """
-        SELECT debate, date::text AS date, summary, num_talks, talk_ids
+        SELECT id, date::text AS date, summary, num_talks, talk_ids
         FROM debates
-        WHERE debate = %s
+        WHERE id = %s
         """,
         (debate_id,),
     )
@@ -663,7 +663,7 @@ def fetch_debate(debate_id: str, query: str | None = None) -> dict:
         _tool_structured_result.set(HitsResponse(hits=hits))
 
     result: dict[str, Any] = {
-        "debate_id": debate.get("debate"),
+        "debate_id": debate.get("id"),
         "date": debate.get("date"),
         "summary": debate.get("summary"),
         "num_talks": debate.get("num_talks") or len(talk_ids),
@@ -713,7 +713,7 @@ def fetch_speeches(_ids: list[str], collection: str = "", fields: list = None) -
         allowed = {
             "id", "text", "sequence", "activity_type",
             "speaker_name", "date", "year", "party", "person_id", "title",
-            "related_doc_id", "debate", "is_reply", "summary", "tags",
+            "related_doc_id", "debate_id", "is_reply", "summary", "tags",
         }
         # Cast date to text so Python receives a string, not a date object
         def _col(f: str) -> str:
@@ -725,7 +725,7 @@ def fetch_speeches(_ids: list[str], collection: str = "", fields: list = None) -
         select = (
             "id, text, sequence, activity_type, "
             "speaker_name, date::text AS date, year, party, person_id, title, "
-            "related_doc_id, debate, is_reply, summary, tags"
+            "related_doc_id, debate_id, is_reply, summary, tags"
         )
 
     rows = pg.execute(
