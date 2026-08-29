@@ -23,6 +23,9 @@ schema: ## Apply schema.sql to the configured database
 	@set -a; . ./.env; set +a; \
 	psql -h "$$PG_HOST" -U "$$PG_USER" -d "$$PG_DB" -v ON_ERROR_STOP=1 -f _postgres/schema.sql
 
+schema-prompt: ## Regenerate the schema block the model reads, from the database
+	.venv/bin/python scripts/generate_schema_prompt.py
+
 mcp: ## Run the MCP server (optional; needs the `mcp` extra)
 	.venv/bin/python riksdagen_mcp/server.py
 

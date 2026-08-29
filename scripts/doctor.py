@@ -162,6 +162,40 @@ def check_database() -> None:
     except Exception:
         report(WARN, "data", "tables not queryable yet")
 
+    # The model's schema description is generated from column comments; an undecided
+    # column means nobody has said whether the model may use it.
+    try:
+        from scripts.generate_schema_prompt import TABLES
+
+        undecided = pg.execute(
+            """SELECT c.relname || '.' || a.attname AS col
+                 FROM pg_class c
+                 JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+                 JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0
+                                    AND NOT a.attisdropped
+                 LEFT JOIN pg_description d ON d.objoid = c.oid AND d.objsubid = a.attnum
+                WHERE c.relname = ANY (%s) AND d.description IS NULL""",
+            (TABLES,),
+        )
+        if not undecided:
+            report(OK, "column comments", "every corpus column is described")
+        else:
+            names = ", ".join(r["col"] for r in undecided[:4])
+            more = f" (+{len(undecided) - 4} more)" if len(undecided) > 4 else ""
+            report(WARN, "column comments",
+                   f"{len(undecided)} undescribed: {names}{more} — "
+                   "see docs/ASSISTANT-SETUP.md section 7")
+    except Exception:
+        report(WARN, "column comments", "could not check")
+
+    # The role that runs model-authored SQL should not be able to read anything else.
+    if os.getenv("PG_LLM_USER"):
+        report(OK, "model SQL role", os.getenv("PG_LLM_USER"))
+    else:
+        report(WARN, "model SQL role",
+               "PG_LLM_USER unset — generated SQL runs on the main connection; "
+               "see _postgres/migrations/add_llm_role.sql")
+
 
 # ── models ────────────────────────────────────────────────────────────────────
 

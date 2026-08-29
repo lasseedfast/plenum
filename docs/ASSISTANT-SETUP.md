@@ -143,7 +143,76 @@ Check: load a small batch and inspect it —
 show them to the user. Wrong-looking data here is far cheaper to fix than after a
 full load.
 
-### Section 7 — Serving it
+### Section 7 — Telling the model what the columns mean
+
+Once the tables exist and a batch is loaded, the model still has to be told which
+columns it may use and what they mean. That description is **generated from the
+database**, so it cannot drift out of date the way a hand-written one does.
+
+The rule: **a column reaches the prompt only if it has a comment**, and the comment is
+the description.
+
+| comment on the column | what happens |
+|---|---|
+| none | the build fails until someone decides |
+| `-` | shown; the name and type already say it |
+| `[hide] reason` | not shown, and the reason is recorded for the next person |
+| any other text | shown, and the text becomes the note the model reads |
+
+Start by running the generator. It refuses to write anything while a column is
+undecided, and lists exactly which:
+
+```bash
+python scripts/generate_schema_prompt.py
+```
+
+Work through that list with the user. **Do not invent meanings.** For every column you
+are not certain about, look before you write:
+
+```sql
+SELECT <column>, count(*) FROM <table> GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
+SELECT count(<column>) * 100.0 / count(*) FROM <table>;   -- how much is filled
+```
+
+That query is the whole job, and it is where the value is. Real examples of what it
+catches, from the Swedish deployment:
+
+- a column named `status` that sounded like the outcome of a vote but held publishing
+  workflow states — hidden, because a model would have used it to answer "was it
+  approved?" and been wrong
+- `birth_year` stored as `text`, so `WHERE birth_year > 1970` errors — noted
+- a column filled for only 66 % of rows, which silently undercounts any `GROUP BY` —
+  noted with its percentage
+- a `doc_type` column with exactly one distinct value — hidden, since filtering on a
+  constant tells the model nothing
+- two columns whose names suggested a join that matches 29 rows out of 428,000 — hidden
+
+Guidance for what to write:
+
+- **Hide by default.** Ingest bookkeeping, source URLs, image paths, embeddings and
+  pipeline flags are all noise to a model answering questions about politics. Roughly
+  half the columns should end up hidden; that is normal.
+- **Write a note only when the name misleads, the values would be guessed wrong, or
+  the coverage changes the answer.** Everything else gets `-`. A note that restates the
+  column name costs context and teaches nothing.
+- **One line, 80 characters.** Longer explanations belong in the prose in
+  `prompts/en/_shared/schema.md`. The tests enforce both this and a total size budget,
+  because this block reaches every SQL-capable agent on every turn.
+
+Put the statements in a migration so they survive a rebuild — copy
+`_postgres/migrations/add_column_comments.sql` and rewrite it for their schema. Then
+regenerate and commit the result.
+
+Check: `python scripts/generate_schema_prompt.py` writes without complaining, and
+`pytest tests/test_schema_comments.py` passes.
+
+Tell the user the routine, because it is theirs from now on: **when a migration adds a
+column, add its comment in the same migration and regenerate.** Renames and drops look
+after themselves — a comment follows its column through `ALTER TABLE ... RENAME` and
+disappears with a `DROP` — so only genuinely new columns need a decision, and the test
+suite will ask for it.
+
+### Section 8 — Serving it
 
 Ask whether this is a personal machine or a public site.
 
@@ -152,8 +221,11 @@ Public means: nginx, TLS, systemd. Templates are in `deploy/examples/`, with
 
 Two things to state plainly rather than assume they know:
 
-- `database_query` runs model-written SQL. It is restricted to reads by two layers, but
-  it should still connect as a `SELECT`-only role. See [SECURITY.md](../SECURITY.md).
+- `database_query` runs model-written SQL. It is restricted to the corpus tables by the
+  guard, but it should also connect as a role granted `SELECT` on those tables and
+  nothing else — otherwise a prompt injection can read your users table. Run
+  `_postgres/migrations/add_llm_role.sql` and set `PG_LLM_USER`. Note the application
+  itself cannot be read-only; it writes chat sessions. See [SECURITY.md](../SECURITY.md).
 - Do **not** add `EnvironmentFile=` to the systemd unit. systemd's parser rejects
   `KEY =` with a space, silently yielding empty values. The app loads `.env` itself.
 

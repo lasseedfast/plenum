@@ -1,30 +1,14 @@
-**Schema.** These are the only columns that exist — a query naming any other one fails.
-
-    speeches            id·PK, speaker_name, party, person_id, date DATE, year INT,
-                        session_year INT, activity_type, debate_id, sequence INT,
-                        is_reply BOOL, summary, tags TEXT[], title, text, search_vector
-    people              person_id·PK, name, party, birth_year INT, gender, active BOOL,
-                        constituency
-    debates             id·PK, date DATE, summary, num_talks INT, talk_ids TEXT[]
-    documents           doc_id·PK, session_label, session_year INT, date DATE, title,
-                        subtype, committee, status, parties TEXT[], author_names TEXT[],
-                        num_proposals INT, text, search_vector
-    document_authors    doc_id, person_id, name, party, role, ordinal INT
-    document_proposals  id·PK, doc_id, ordinal INT, number, text,
-                        committee_recommendation, chamber_decision, handled_in
-
+{{include:_shared/schema_tables}}
 Joins: `speeches.person_id = people.person_id` · `speeches.debate_id = debates.id` ·
 `document_authors.doc_id = documents.doc_id` · `document_proposals.doc_id = documents.doc_id`.
 
-Things the column names do not tell you:
+Also worth knowing:
 
-- `speeches.title` is the title of the *protocol* the speech came from, not of the speech.
-- `speeches.debate_id` is NULL for many older speeches.
 - `documents` has no plain `year` — use `session_year`.
-- `document_authors.ordinal` is signing order; 0 is the first author.
-- `document_proposals.id` is `'{doc_id}:{ordinal}'`.
 - Cast dates when selecting them: `date::text`.
 - Select `person_id` alongside speeches so results link back to a speaker.
+- `summary`, `tags` and `arguments` are written by a model from the source text.
+  Use them to find things; quote only `text`, which is what was actually said.
 
 **Full-text search, never LIKE.** Use
 `WHERE search_vector @@ websearch_to_tsquery('$fts_config', '...')` — it uses the GIN index

@@ -8,6 +8,36 @@ English equivalent — the Swedish *yrkande*, *riksmöte* or *replik* — the co
 a neutral name and the country's own word lives in `parliament.yaml` under
 `vocabulary:`, where prompts pick it up. Data values are never translated.
 
+## What the model is told
+
+This page is for people. The description the *model* reads is a different, shorter
+thing — [`prompts/en/_shared/schema_tables.md`](../prompts/en/_shared/schema_tables.md)
+— and it is **generated from the database**, never edited by hand:
+
+```bash
+python scripts/generate_schema_prompt.py
+```
+
+A column reaches that file only if it carries a `COMMENT`, and the comment is its
+description. `-` means "shown, the name says it"; `[hide] reason` keeps it out; any
+other text becomes the note the model reads; no comment at all fails the build, so a
+newly added column cannot be silently forgotten. The statements live in
+[`_postgres/migrations/add_column_comments.sql`](../_postgres/migrations/add_column_comments.sql).
+
+Roughly half the columns are hidden — ingest bookkeeping, URLs, embeddings, pipeline
+flags. A model answering questions about politics has no use for them, and every
+column it is shown costs context on every turn.
+
+This exists because the hand-maintained version drifted: it named three columns that
+did not exist (`debates.debate`, `document_proposals.nummer`, `behandlas_i`), warned
+about NULLs in a column that has none, and called a `text` column an integer. A
+generated description cannot do any of that. `COMMENT` also survives
+`ALTER TABLE ... RENAME` and vanishes on `DROP`, so the prompt follows a rename by
+itself.
+
+**Adding a column?** Write its `COMMENT` in the same migration, then regenerate.
+`tests/test_schema_comments.py` will fail until you do.
+
 ## Core tables
 
 ### `speeches` — what was said in the chamber
@@ -24,7 +54,7 @@ a neutral name and the country's own word lives in `parliament.yaml` under
 | `party`, `person_id` | Party code; person, referencing `people` |
 | `date`, `source_datetime`, `year`, `session_year` | Date, raw source string, calendar year, and the parliamentary session's start year |
 | `source_doc_id`, `related_doc_id`, `source_doc_number`, `source_record_id` | Source document references. `source_doc_id` is the protocol document the speech appeared in — not this row's own key |
-| `title` | Debate title |
+| `title` | Title of the *protocol* the speech appeared in, not of the speech or the debate. `section_title` is the agenda item, which is what most questions actually mean |
 | `debate_id` | Groups speeches into a debate, `"{date}:{index}"` |
 | `is_reply` | A short right-of-reply intervention. The Swedish *replik* carries procedural standing this name does not capture; nothing downstream depends on it |
 | `summary`, `tags`, `arguments` | LLM-derived |
