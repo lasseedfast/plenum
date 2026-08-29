@@ -27,6 +27,12 @@ GRANT SELECT ON documents           TO plenum_llm;
 GRANT SELECT ON document_authors    TO plenum_llm;
 GRANT SELECT ON document_proposals  TO plenum_llm;
 
+-- The pooled connection sets temp_file_limit, which is superuser-only to set.
+-- Without this grant the role cannot connect at all and every model query fails,
+-- including the legitimate ones. Granting it keeps the runaway-query guardrail
+-- rather than dropping it. Requires PostgreSQL 15 or newer.
+GRANT SET ON PARAMETER temp_file_limit TO plenum_llm;
+
 -- Verify: the first must fail, the second must succeed.
 --   psql -U plenum_llm -d plenum -c 'SELECT count(*) FROM users;'
 --   psql -U plenum_llm -d plenum -c 'SELECT count(*) FROM speeches;'
